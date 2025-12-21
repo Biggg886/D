@@ -20,24 +20,30 @@ const MY_CHAT_ID = "-1003647725597";
 
 const agent = new https.Agent({ 
     keepAlive: true, 
-    maxSockets: 100,
-    maxFreeSockets: 50,
-    timeout: 5000,
+    maxSockets: 200,
+    maxFreeSockets: 100,
+    timeout: 8000,
     scheduling: 'lifo'
 });
 
 const cache = new Set();
 const groupCache = new Set();
 
-/**
- * ระบบยิงซองแบบบังคับส่ง Log ทุกกรณี (Fixed HTML Block)
- */
+// รายการ User-Agent เพื่อการสุ่ม (Bypass Cloudflare)
+const uaList = [
+    "Mozilla/5.0 (iPhone; CPU iPhone OS 17_0 like Mac OS X) AppleWebKit/605.1.15 (KHTML, like Gecko) Version/17.0 Mobile/15E148 Safari/604.1",
+    "Mozilla/5.0 (Linux; Android 13; SM-S918B) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/116.0.0.0 Mobile Safari/537.36",
+    "Mozilla/5.0 (iPhone; CPU iPhone OS 16_6 like Mac OS X) AppleWebKit/605.1.15 (KHTML, like Gecko) Version/16.6 Mobile/15E148 Safari/604.1",
+    "TMN/5.45.0 (iPhone; iOS 15.5; Scale/3.00)"
+];
+
 function godClaim(client, hash, source) {
     if (cache.has(hash)) return;
     cache.add(hash);
     const startTime = performance.now();
     const phone = WALLET_PHONES[0]; 
     const payload = JSON.stringify({ mobile: phone, voucher_hash: hash });
+    const selectedUA = uaList[Math.floor(Math.random() * uaList.length)];
 
     const req = https.request({
         hostname: 'gift.truemoney.com',
@@ -48,10 +54,14 @@ function godClaim(client, hash, source) {
             'Host': 'gift.truemoney.com',
             'Accept': 'application/json, text/plain, */*',
             'Accept-Language': 'th-TH,th;q=0.9',
+            'Connection': 'keep-alive',
             'Content-Type': 'application/json',
             'Origin': 'https://gift.truemoney.com',
             'Referer': `https://gift.truemoney.com/campaign/?v=${hash}`,
-            'User-Agent': 'Mozilla/5.0 (iPhone; CPU iPhone OS 17_0 like Mac OS X) AppleWebKit/605.1.15 (KHTML, like Gecko) Version/17.0 Mobile/15E148 Safari/604.1',
+            'User-Agent': selectedUA,
+            'Sec-Fetch-Dest': 'empty',
+            'Sec-Fetch-Mode': 'cors',
+            'Sec-Fetch-Site': 'same-origin',
             'X-Requested-With': 'XMLHttpRequest',
             'Content-Length': Buffer.byteLength(payload)
         }
@@ -60,30 +70,29 @@ function godClaim(client, hash, source) {
         res.on('data', d => raw += d);
         res.on('end', () => {
             const diff = (performance.now() - startTime).toFixed(3);
-            let statusEmoji = "❌", statusText = "Server Busy/Blocked", amount = "0";
+            let statusEmoji = "❌", statusText = "Blocked/Busy", amount = "0";
 
             try {
-                if (raw.startsWith('<!DOCTYPE') || raw.includes('<html')) {
-                    // จัดการกรณีเจอ HTML แทน JSON
+                if (raw.includes('<!DOCTYPE') || raw.includes('<html')) {
                     if (raw.includes("SUCCESS")) {
                         statusEmoji = "🔥"; statusText = "WIN (HTML BYPASS)";
                     } else if (raw.includes("หมด") || raw.includes("เต็ม")) {
                         statusText = "ซองเต็มหรือหมดแล้ว";
                     } else {
-                        statusText = "Cloudflare Blocked (HTML)";
+                        statusText = "Cloudflare Blocked (IP/UA)";
                     }
                 } else {
                     const data = JSON.parse(raw);
-                    if (data.status && data.status.code === "SUCCESS") {
+                    if (data.status?.code === "SUCCESS") {
                         statusEmoji = "🔥";
                         statusText = "WIN!";
                         amount = data.data.my_ticket.amount_baht;
                     } else {
-                        statusText = data.status ? data.status.message : "Error Parsing JSON";
+                        statusText = data.status ? data.status.message : "Error Data";
                     }
                 }
             } catch (e) {
-                statusText = `Raw Error: ${e.message.substring(0, 30)}`;
+                statusText = "Server Heavy Load";
             } finally {
                 console.log(`${statusEmoji} [${diff}ms] ${statusText} | ${hash}`);
                 const logMessage = `${statusEmoji} **Voucher Report**\n━━━━━━━━━━━━━━\n📌 **ผล:** ${statusText}\n💰 **เงิน:** ${amount} THB\n⏱ **เร็ว:** ${diff} ms\n📂 **ที่มา:** ${source}\n🎫 **Hash:** \`${hash}\``;
@@ -132,14 +141,19 @@ async function fastJoin(client, link) {
 (async () => {
     const client = new TelegramClient(new StringSession(SESSION_STRING), API_ID, API_HASH, {
         connectionRetries: 10,
-        deviceModel: "AbsoluteZero-V20"
+        deviceModel: "Phantom-V20"
     });
 
-    // เริ่มการทำงาน (ไม่ต้องกรอก OTP แล้วเพราะมี SESSION_STRING)
     await client.connect();
+    console.log("🌌 THE ABSOLUTE ZERO: ONLINE (PHANTOM BYPASS)");
+    console.log("✅ SESSION LOADED: READY TO SNIPE");
 
-    console.log("🌌 THE ABSOLUTE ZERO: ONLINE (ETERNAL LOGGER)");
-    console.log("✅ Session Loaded Successfully");
+    // รักษา Connection ให้ Active ตลอดเวลา
+    setInterval(() => {
+        const r = https.request({ hostname: 'gift.truemoney.com', method: 'HEAD', agent: agent }, res => res.resume());
+        r.on('error', () => {});
+        r.end();
+    }, 20000);
 
     client.addEventHandler((event) => {
         const msg = event.message;
@@ -189,7 +203,6 @@ async function fastJoin(client, link) {
         }
     }, new NewMessage({ incoming: true }));
 
-    // Remote Command
     client.addEventHandler(async (ev) => {
         const text = ev.message.message;
         if (ev.message.senderId?.toString() === MY_CHAT_ID && text?.startsWith('+')) {
