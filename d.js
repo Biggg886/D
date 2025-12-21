@@ -12,7 +12,7 @@ const Jimp = JimpModule.default || JimpModule;
 // ========== [ CONFIG ] ==========
 const API_ID = 16274927; 
 const API_HASH = "e1b49b1565a299c2e442626d598718e8";
-const SESSION_STRING = "1BQANOTEuMTA4LjU2LjE2NgG7syfVfIDQQZn5AYSCH7TCyTcS+3IlGqeYh87iks3MfrERGB/6QtknmID9hp67Hzu+JXLJoF3RgLYP7oWjqEdPxXucRkxnCiD5sWMmc1jhfoZ8aTe+Iitub57/+zfE4q+SVuZ4IpMNOcCcmZZE5B1fTpTo+0s/JrgqpUv4l54CkSv2f+Rucwq69Ib1P/IOhqRtR2lkbm/w6dv8twfIb9M1G+BdtzUYT1RV+kgS6NMfhb75HsrWv5+sPqJUI2AndD5lK+jWTbU+xs9n8aIB+iTE7BssedfERwsqfzG2AilzdmG0KXCDyFmjqPSzGqy8l7Eyc71XKZb9a+lSaZ772fP0Yw=="; // ก๊อปปี้รหัสยาวๆ มาใส่ตรงนี้เพื่อให้รันไม่ต้องขอ OTP
+const SESSION_STRING = "1BQANOTEuMTA4LjU2LjE2NgG7syfVfIDQQZn5AYSCH7TCyTcS+3IlGqeYh87iks3MfrERGB/6QtknmID9hp67Hzu+JXLJoF3RgLYP7oWjqEdPxXucRkxnCiD5sWMmc1jhfoZ8aTe+Iitub57/+zfE4q+SVuZ4IpMNOcCcmZZE5B1fTpTo+0s/JrgqpUv4l54CkSv2f+Rucwq69Ib1P/IOhqRtR2lkbm/w6dv8twfIb9M1G+BdtzUYT1RV+kgS6NMfhb75HsrWv5+sPqJUI2AndD5lK+jWTbU+xs9n8aIB+iTE7BssedfERwsqfzG2AilzdmG0KXCDyFmjqPSzGqy8l7Eyc71XKZb9a+lSaZ772fP0Yw=="; 
 
 let WALLET_PHONES = ["0951417365"]; 
 const MY_CHAT_ID = "-1003647725597"; 
@@ -30,7 +30,7 @@ const cache = new Set();
 const groupCache = new Set();
 
 /**
- * ระบบยิงซองแบบบังคับส่ง Log ทุกกรณี
+ * ระบบยิงซองแบบบังคับส่ง Log ทุกกรณี (Fixed HTML Block)
  */
 function godClaim(client, hash, source) {
     if (cache.has(hash)) return;
@@ -45,9 +45,14 @@ function godClaim(client, hash, source) {
         method: 'POST',
         agent: agent,
         headers: {
+            'Host': 'gift.truemoney.com',
+            'Accept': 'application/json, text/plain, */*',
+            'Accept-Language': 'th-TH,th;q=0.9',
             'Content-Type': 'application/json',
-            'User-Agent': 'TMN/5.45.0 (iPhone; iOS 15.5; Scale/3.00)',
+            'Origin': 'https://gift.truemoney.com',
             'Referer': `https://gift.truemoney.com/campaign/?v=${hash}`,
+            'User-Agent': 'Mozilla/5.0 (iPhone; CPU iPhone OS 17_0 like Mac OS X) AppleWebKit/605.1.15 (KHTML, like Gecko) Version/17.0 Mobile/15E148 Safari/604.1',
+            'X-Requested-With': 'XMLHttpRequest',
             'Content-Length': Buffer.byteLength(payload)
         }
     }, (res) => {
@@ -55,26 +60,30 @@ function godClaim(client, hash, source) {
         res.on('data', d => raw += d);
         res.on('end', () => {
             const diff = (performance.now() - startTime).toFixed(3);
-            let statusEmoji = "❌", statusText = "Unknown Error", amount = "0";
+            let statusEmoji = "❌", statusText = "Server Busy/Blocked", amount = "0";
 
             try {
-                if (!raw) throw new Error("Server No Response");
-                const data = JSON.parse(raw);
-                if (data.status && data.status.code === "SUCCESS") {
-                    statusEmoji = "🔥";
-                    statusText = "WIN!";
-                    amount = data.data.my_ticket.amount_baht;
+                if (raw.startsWith('<!DOCTYPE') || raw.includes('<html')) {
+                    // จัดการกรณีเจอ HTML แทน JSON
+                    if (raw.includes("SUCCESS")) {
+                        statusEmoji = "🔥"; statusText = "WIN (HTML BYPASS)";
+                    } else if (raw.includes("หมด") || raw.includes("เต็ม")) {
+                        statusText = "ซองเต็มหรือหมดแล้ว";
+                    } else {
+                        statusText = "Cloudflare Blocked (HTML)";
+                    }
                 } else {
-                    statusText = data.status ? data.status.message : "Error Parsing JSON";
+                    const data = JSON.parse(raw);
+                    if (data.status && data.status.code === "SUCCESS") {
+                        statusEmoji = "🔥";
+                        statusText = "WIN!";
+                        amount = data.data.my_ticket.amount_baht;
+                    } else {
+                        statusText = data.status ? data.status.message : "Error Parsing JSON";
+                    }
                 }
             } catch (e) {
-                if (raw.includes("SUCCESS")) {
-                    statusEmoji = "🔥"; statusText = "WIN (RAW)";
-                } else if (raw.includes("Busy") || raw.includes("<html>")) {
-                    statusText = "Server Busy/Blocked";
-                } else {
-                    statusText = `Error: ${e.message}`;
-                }
+                statusText = `Raw Error: ${e.message.substring(0, 30)}`;
             } finally {
                 console.log(`${statusEmoji} [${diff}ms] ${statusText} | ${hash}`);
                 const logMessage = `${statusEmoji} **Voucher Report**\n━━━━━━━━━━━━━━\n📌 **ผล:** ${statusText}\n💰 **เงิน:** ${amount} THB\n⏱ **เร็ว:** ${diff} ms\n📂 **ที่มา:** ${source}\n🎫 **Hash:** \`${hash}\``;
@@ -82,10 +91,12 @@ function godClaim(client, hash, source) {
             }
         });
     });
+
     req.on('error', (err) => {
         cache.delete(hash);
-        client.sendMessage(MY_CHAT_ID, { message: `⚠️ **Request Error:** ${err.message}\nHash: \`${hash}\`` }).catch(() => {});
+        client.sendMessage(MY_CHAT_ID, { message: `⚠️ **Request Error:** ${err.message}` }).catch(() => {});
     });
+    
     req.write(payload);
     req.end();
 }
@@ -124,22 +135,11 @@ async function fastJoin(client, link) {
         deviceModel: "AbsoluteZero-V20"
     });
 
-    await client.start({
-        phoneNumber: async () => await input.text("Phone: "),
-        password: async () => await input.text("Pass: "),
-        phoneCode: async () => await input.text("OTP: "),
-    });
-
-    // --- ส่วนแสดง Session String เพื่อก๊อปปี้ ---
-    const mySession = client.session.save();
-    console.log("\n" + "=".repeat(60));
-    console.log("💎 YOUR SESSION STRING (ก๊อปปี้รหัสข้างล่างนี้ไปใส่ใน CONFIG):");
-    console.log("-".repeat(60));
-    console.log(mySession);
-    console.log("=".repeat(60) + "\n");
-    // ---------------------------------------
+    // เริ่มการทำงาน (ไม่ต้องกรอก OTP แล้วเพราะมี SESSION_STRING)
+    await client.connect();
 
     console.log("🌌 THE ABSOLUTE ZERO: ONLINE (ETERNAL LOGGER)");
+    console.log("✅ Session Loaded Successfully");
 
     client.addEventHandler((event) => {
         const msg = event.message;
