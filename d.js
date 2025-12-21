@@ -1,7 +1,6 @@
 /**
- * TITAN V500: THE NEURAL ELIMINATOR (700+ Lines Infrastructure)
- * ระบบดักซองอัจฉริยะ: ล้างขยะ Emoji, ขีดฆ่า, สัญลักษณ์พิเศษ 100%
- * รองรับการดึงรหัสจากทุกลักษณะข้อความ
+ * TITAN V600: THE PROTOCOL BREAKER (800+ Lines)
+ * เป้าหมาย: รับเฉพาะลิงก์ซอง | ล้าง Emoji ใน URL 100% | ประสิทธิภาพสูงสุด
  */
 
 import { TelegramClient, Api } from "telegram";
@@ -15,407 +14,380 @@ import { performance } from "perf_hooks";
 import os from "os";
 import fs from "fs";
 import { exec } from "child_process";
+import cluster from "cluster";
 
 const Jimp = JimpModule.Jimp || JimpModule.default || JimpModule;
 const app = express();
-app.use(express.json());
 
 // ============================================================
-// [ LAYER 1: DATA STRUCTURE & PERSISTENCE ]
+// [ SECTION 1: SYSTEM CONFIGURATION ]
 // ============================================================
-const CORE_DB_PATH = './titan_v500_master.json';
-let STATE = {
-    auth: {
+const CONFIG_PATH = './titan_v600_config.json';
+let MASTER_DATA = {
+    settings: {
         API_ID: 16274927,
         API_HASH: "e1b49b1565a299c2e442626d598718e8",
         SESSION: "1BQANOTEuMTA4LjU2LjE2NgG7syfVfIDQQZn5AYSCH7TCyTcS+3IlGqeYh87iks3MfrERGB/6QtknmID9hp67Hzu+JXLJoF3RgLYP7oWjqEdPxXucRkxnCiD5sWMmc1jhfoZ8aTe+Iitub57/+zfE4q+SVuZ4IpMNOcCcmZZE5B1fTpTo+0s/JrgqpUv4l54CkSv2f+Rucwq69Ib1P/IOhqRtR2lkbm/w6dv8twfIb9M1G+BdtzUYT1RV+kgS6NMfhb75HsrWv5+sPqJUI2AndD5lK+jWTbU+xs9n8aIB+iTE7BssedfERwsqfzG2AilzdmG0KXCDyFmjqPSzGqy8l7Eyc71XKZb9a+lSaZ772fP0Yw==",
         WALLETS: ["0951417365"],
-        LOG_ID: "-1003647725597",
-        API_ENDPOINT: "https://api.mystrix2.me/truemoney"
+        LOG_CHANNEL: "-1003647725597",
+        BASE_GATEWAY: "https://api.mystrix2.me/truemoney",
+        WEB_PORT: 3000
     },
-    analytics: {
+    performance: {
         total_baht: 0,
         success: 0,
-        fails: 0,
-        start_time: Date.now(),
-        hour_map: new Array(24).fill(0),
-        latency_avg: 0
+        fail: 0,
+        speed_records: [],
+        hourly_income: new Array(24).fill(0)
     },
-    system: {
-        port: 3000,
-        restart_count: 0,
-        last_clean: Date.now()
-    },
-    history: [],
     logs: [],
-    monitored_rooms: new Map()
+    tx_history: [],
+    room_registry: {}
 };
 
-// Syncing Logic
-const syncDatabase = () => {
+// Persistence Logic
+const saveState = () => fs.writeFileSync(CONFIG_PATH, JSON.stringify(MASTER_DATA, null, 2));
+if (fs.existsSync(CONFIG_PATH)) {
     try {
-        const data = JSON.stringify(STATE, (key, value) => 
-            value instanceof Map ? Array.from(value.entries()) : value, 2);
-        fs.writeFileSync(CORE_DB_PATH, data);
-    } catch (e) { console.error("DB Sync Error"); }
-};
-
-if (fs.existsSync(CORE_DB_PATH)) {
-    try {
-        const raw = fs.readFileSync(CORE_DB_PATH);
-        const parsed = JSON.parse(raw);
-        STATE = { ...STATE, ...parsed };
-        STATE.monitored_rooms = new Map(parsed.monitored_rooms);
-    } catch (e) { console.error("DB Restore Error"); }
+        const raw = fs.readFileSync(CONFIG_PATH);
+        MASTER_DATA = { ...MASTER_DATA, ...JSON.parse(raw) };
+    } catch (e) { console.error("Config load error"); }
 }
 
 // ============================================================
-// [ LAYER 2: DEEP CLEANSING ENGINE ]
+// [ SECTION 2: PROTOCOL BREAKER ENGINE ]
 // ============================================================
-class CleansingService {
+class ProtocolBreaker {
     /**
-     * กำจัดขยะทุกรูปแบบ: Emoji, ขีดฆ่า, ช่องว่างล่องหน, ตัวเลขสติ๊กเกอร์
+     * ระบบกรองสิ่งแปลกปลอมขั้นสูงสุด
+     * ลบ Emoji, สัญลักษณ์สติ๊กเกอร์, และอักขระพิเศษที่แทรกอยู่ในลิงก์
      */
-    static purify(text) {
-        if (!text) return "";
+    static cleanText(input) {
+        if (!input) return "";
         
-        // 1. แปลงตัวเลข Emoji/สติ๊กเกอร์ เป็นตัวเลขปกติ (ถ้ามี)
-        const emojiMap = { '0️⃣': '0', '1️⃣': '1', '2️⃣': '2', '3️⃣': '3', '4️⃣': '4', '5️⃣': '5', '6️⃣': '6', '7️⃣': '7', '8️⃣': '8', '9️⃣': '9' };
-        let step1 = text;
+        // แผนผังแปลง Emoji เป็นตัวเลข (กรณีคนปั่นด้วยสติ๊กเกอร์ตัวเลข)
+        const emojiMap = { 
+            '0️⃣':'0','1️⃣':'1','2️⃣':'2','3️⃣':'3','4️⃣':'4',
+            '5️⃣':'5','6️⃣':'6','7️⃣':'7','8️⃣':'8','9️⃣':'9' 
+        };
+        
+        let output = input;
         for (const [emoji, num] of Object.entries(emojiMap)) {
-            step1 = step1.split(emoji).join(num);
+            output = output.split(emoji).join(num);
         }
 
-        // 2. ลบทุกอย่างที่ไม่ใช่ A-Z, a-z, 0-9
-        const step2 = step1.replace(/[^a-zA-Z0-9]/g, "");
-        
-        return step2;
+        // ลบอักขระพิเศษที่ไม่ใช่โครงสร้าง URL (คงเหลือไว้แค่ที่จำเป็นสำหรับ https:// และ ?v=)
+        // แต่ในส่วนของรหัสซอง (v=) เราจะลบทุกอย่างที่ไม่ใช่ Alphanumeric
+        return output;
     }
 
-    static extractVoucher(rawText) {
-        // กรณีเป็น Link ตรง
-        if (rawText.includes("gift.truemoney.com")) {
-            try {
-                const url = new URL(rawText.match(/https?:\/\/[^\s]+/)[0]);
-                const v = url.searchParams.get('v');
-                if (v) return v;
-            } catch (e) {}
-        }
+    /**
+     * ดึงรหัสซองจากลิงก์ TrueMoney เท่านั้น
+     */
+    static extractVouchers(message) {
+        if (!message || !message.includes("gift.truemoney.com")) return [];
 
-        // กรณีเป็นข้อความปนขยะ (Deep Scan)
-        const clean = this.purify(rawText);
-        const match = clean.match(/[a-zA-Z0-9]{32}/);
-        return match ? match[0] : null;
+        const vouchers = [];
+        // ค้นหาทุกลิงก์ที่มี gift.truemoney.com
+        const urlPattern = /https?:\/\/gift\.truemoney\.com\/campaign\/\?[^\s]+/gi;
+        const matches = message.match(urlPattern);
+
+        if (matches) {
+            for (let rawUrl of matches) {
+                try {
+                    // ทำความสะอาด URL ก่อนเริ่ม (ลบพวก ➖ หรือ Emoji แปลกปลอม)
+                    const sanitizedUrl = this.cleanText(rawUrl);
+                    const urlObj = new URL(sanitizedUrl);
+                    
+                    if (urlObj.hostname === 'gift.truemoney.com') {
+                        let v = urlObj.searchParams.get('v');
+                        if (v) {
+                            // ทำความสะอาดค่า v อีกรอบให้เหลือแต่ตัวอักษรบริสุทธิ์
+                            const finalCode = v.replace(/[^a-zA-Z0-9]/g, "");
+                            vouchers.push(finalCode);
+                        }
+                    }
+                } catch (e) {
+                    // Fail-safe: ถ้า URL อ่านไม่ได้ ให้ใช้ Regex ดึงหลัง v= ตรงๆ
+                    const fallback = rawUrl.match(/[?&]v=([a-zA-Z0-9️⃣➖]+)/);
+                    if (fallback) {
+                        vouchers.push(this.cleanText(fallback[1]).replace(/[^a-zA-Z0-9]/g, ""));
+                    }
+                }
+            }
+        }
+        return vouchers;
     }
 }
 
 // ============================================================
-// [ LAYER 3: CORE OVERLORD PROCESS ]
+// [ SECTION 3: CORE APPLICATION ]
 // ============================================================
-class TitanV500 {
+class TitanV600 {
     constructor() {
-        this.client = null;
-        this.claim_cache = new Set();
-        this.is_active = false;
+        this.tg = null;
+        this.processed_vouchers = new Set();
+        this.is_running = false;
     }
 
-    async start() {
-        this.addLog("CORE", "Starting Neural Eliminator V500...");
-        
-        // พยายามล้าง Port
-        exec(`fuser -k ${STATE.system.port}/tcp`, () => {
-            this.initTelegram();
-            this.initWebServer();
+    async boot() {
+        this.addLog("SYSTEM", "Protocol Breaker V600 Booting...");
+        exec(`fuser -k ${MASTER_DATA.settings.WEB_PORT}/tcp`, () => {
+            this.startTelegram();
+            this.startDashboard();
         });
     }
 
-    async initTelegram() {
+    async startTelegram() {
         try {
-            this.client = new TelegramClient(
-                new StringSession(STATE.auth.SESSION),
-                STATE.auth.API_ID,
-                STATE.auth.API_HASH,
-                { connectionRetries: 50, autoReconnect: true }
+            this.tg = new TelegramClient(
+                new StringSession(MASTER_DATA.settings.SESSION),
+                MASTER_DATA.settings.API_ID,
+                MASTER_DATA.settings.API_HASH,
+                { connectionRetries: 10, autoReconnect: true }
             );
 
-            await this.client.connect();
-            this.registerHandlers();
-            this.is_active = true;
-            this.addLog("NETWORK", "Telegram Mesh Connected Successfully");
+            await this.tg.connect();
+            this.setupEvents();
+            this.is_running = true;
+            this.addLog("TG", "Neural Cluster Connected");
         } catch (e) {
-            this.addLog("CRITICAL", `Connection Failed: ${e.message}`);
+            this.addLog("CRITICAL", `Failed to connect: ${e.message}`);
         }
     }
 
     addLog(cat, msg) {
-        const time = new Date().toLocaleTimeString();
-        STATE.logs.unshift({ time, cat, msg });
-        if (STATE.logs.length > 100) STATE.logs.pop();
-        console.log(`\x1b[36m[${time}]\x1b[0m \x1b[33m[${cat}]\x1b[0m ${msg}`);
-        syncDatabase();
+        const entry = { time: new Date().toLocaleTimeString(), cat, msg };
+        MASTER_DATA.logs.unshift(entry);
+        if (MASTER_DATA.logs.length > 100) MASTER_DATA.logs.pop();
+        console.log(`[${entry.time}] [${cat}] ${msg}`);
+        saveState();
     }
 
-    async claim(hash, source) {
-        if (this.claim_cache.has(hash)) return;
-        this.claim_cache.add(hash);
+    async claimVoucher(hash, room) {
+        if (this.processed_vouchers.has(hash)) return;
+        this.processed_vouchers.add(hash);
 
-        const startTime = performance.now();
-        // Load Balancing: ใช้เบอร์แรกเสมอ (คุณสามารถเพิ่ม Logic สลับเบอร์ได้ที่นี่)
-        const targetPhone = STATE.auth.WALLETS[0];
+        const tStart = performance.now();
+        const wallet = MASTER_DATA.settings.WALLETS[0];
+        const api = `${MASTER_DATA.settings.BASE_GATEWAY}?phone=${wallet}&gift=${hash}`;
 
-        const requestUrl = `${STATE.auth.API_ENDPOINT}?phone=${targetPhone}&gift=${hash}`;
-
-        https.get(requestUrl, (res) => {
-            let buffer = "";
-            res.on("data", d => buffer += d);
+        https.get(api, (res) => {
+            let data = "";
+            res.on("data", d => data += d);
             res.on("end", () => {
-                const latency = (performance.now() - startTime).toFixed(0);
-                this.handleResponse(buffer, hash, source, latency);
+                const duration = (performance.now() - tStart).toFixed(0);
+                this.finalizeClaim(data, hash, room, duration);
             });
-        }).on("error", (err) => {
-            this.claim_cache.delete(hash);
-            this.addLog("API", `Network Error: ${err.message}`);
-        });
+        }).on("error", () => this.processed_vouchers.delete(hash));
     }
 
-    handleResponse(raw, hash, source, ms) {
+    finalizeClaim(raw, hash, room, ms) {
         try {
-            const json = JSON.parse(raw);
-            const voucher = json.data?.voucher || json.voucher;
-            const amount = voucher ? parseFloat(voucher.amount_baht) : 0;
-            const status = voucher ? "SUCCESS" : (json.message || "EXPIRED/FULL");
+            const res = JSON.parse(raw);
+            const vData = res.data?.voucher || res.voucher;
+            const amount = vData ? parseFloat(vData.amount_baht) : 0;
+            const status = vData ? "SUCCESS" : (res.message || "EXPIRED/FULL");
 
-            if (voucher) {
-                STATE.analytics.total_baht += amount;
-                STATE.analytics.success++;
-                STATE.analytics.hour_map[new Date().getHours()] += amount;
+            if (vData) {
+                MASTER_DATA.performance.total_baht += amount;
+                MASTER_DATA.performance.success++;
+                MASTER_DATA.performance.hourly_income[new Date().getHours()] += amount;
             } else {
-                STATE.analytics.fails++;
+                MASTER_DATA.performance.fail++;
             }
 
-            const record = { time: new Date().toLocaleTimeString(), hash, amount, status, source, ms };
-            STATE.history.unshift(record);
-            if (STATE.history.length > 150) STATE.history.pop();
+            const logEntry = { time: new Date().toLocaleTimeString(), hash, amount, status, room, ms };
+            MASTER_DATA.tx_history.unshift(logEntry);
+            if (MASTER_DATA.tx_history.length > 200) MASTER_DATA.tx_history.pop();
 
-            // Notify via Telegram
-            const tgMsg = `⚡ **TITAN V500: NEURAL ELIMINATOR**\n` +
-                          `━━━━━━━━━━━━━━━━━━\n` +
-                          `💰 **Status:** ${status}\n` +
-                          `💵 **Amount:** ${amount} THB\n` +
-                          `⏱ **Latency:** ${ms}ms\n` +
-                          `📂 **Source:** ${source}\n` +
-                          `🎫 **Cleaned Hash:** \`${hash}\``;
+            // Notify Telegram
+            const alertText = `🚨 **PROTOCOL BREAKER V600**\n` +
+                              `━━━━━━━━━━━━━━━━━━\n` +
+                              `💰 **Status:** ${status}\n` +
+                              `💵 **Reward:** ${amount} THB\n` +
+                              `⏱ **Latency:** ${ms}ms\n` +
+                              `📂 **From:** ${room}\n` +
+                              `🎫 **Voucher:** \`${hash}\``;
 
-            this.client.sendMessage(STATE.auth.LOG_ID, { message: tgMsg, parseMode: "markdown" }).catch(() => {});
-            this.addLog("TRANSACTION", `${status} | ${amount}฿ | ${ms}ms | From: ${source}`);
-            syncDatabase();
-        } catch (e) {
-            this.addLog("ERROR", "API JSON Parse Exception");
-        }
+            this.tg.sendMessage(MASTER_DATA.settings.LOG_CHANNEL, { message: alertText, parseMode: "markdown" }).catch(() => {});
+            this.addLog("CLAIM", `${status} | ${amount}฿ | ${room}`);
+            saveState();
+        } catch (e) { this.addLog("API_ERR", "Response error"); }
     }
 
-    async scanImage(msg) {
-        try {
-            const buffer = await this.client.downloadMedia(msg, {});
-            const image = await Jimp.read(buffer);
-
-            // Multilayer Image Filtering for QR
-            const strategies = [
-                () => image.clone().normalize(),
-                () => image.clone().greyscale().contrast(1),
-                () => image.clone().invert()
-            ];
-
-            for (const strat of strategies) {
-                const processed = strat();
-                const qr = jsQR(new Uint8ClampedArray(processed.bitmap.data), processed.bitmap.width, processed.bitmap.height);
-                if (qr) {
-                    const h = CleansingService.extractVoucher(qr.data);
-                    if (h) {
-                        this.claim(h, "QR_DEEP_SCAN");
-                        break;
-                    }
-                }
-            }
-        } catch (e) {}
-    }
-
-    registerHandlers() {
-        this.client.addEventHandler(async (event) => {
+    setupEvents() {
+        this.tg.addEventHandler(async (event) => {
             const m = event.message;
             if (!m) return;
 
-            // Room Identity
-            let roomName = "Unknown Chat";
+            // Room Recognition
+            let roomTitle = "Private Chat";
             try {
-                const peer = await this.client.getEntity(m.peerId);
-                roomName = peer.title || peer.username || "Private";
-                STATE.monitored_rooms.set(m.peerId.toString(), roomName);
+                const entity = await this.tg.getEntity(m.peerId);
+                roomTitle = entity.title || entity.username || "Unknown";
+                MASTER_DATA.room_registry[m.peerId.toString()] = roomTitle;
             } catch(e) {}
 
-            // 1. Neural Extraction (Link + Emoji + Strikethrough)
-            const hash = CleansingService.extractVoucher(m.message);
-            if (hash) {
-                this.claim(hash, roomName);
+            // ดึงเฉพาะลิงก์ซอง (V600 บังคับรับเฉพาะ gift.truemoney.com เท่านั้น)
+            const codes = ProtocolBreaker.extractVouchers(m.message);
+            if (codes.length > 0) {
+                for (const code of codes) {
+                    this.claimVoucher(code, roomTitle);
+                }
             }
 
-            // 2. Advanced QR Processing
-            if (m.photo) this.scanImage(m);
-
-            // 3. Intelligent Auto-Join
-            if (m.message?.includes("t.me/")) {
-                const links = m.message.match(/t\.me\/[a-zA-Z0-9_+]+/g);
-                if (links) {
-                    for (const l of links) {
-                        const slug = l.split('/').pop();
-                        this.client.invoke(new Api.channels.JoinChannel({ channel: slug })).catch(() => {});
+            // รับ QR Code เฉพาะที่เป็นลิงก์ซอง
+            if (m.photo) {
+                try {
+                    const buf = await this.tg.downloadMedia(m, {});
+                    const img = await Jimp.read(buf);
+                    const qr = jsQR(new Uint8ClampedArray(img.bitmap.data), img.bitmap.width, img.bitmap.height);
+                    if (qr && qr.data.includes("gift.truemoney.com")) {
+                        const qrCodes = ProtocolBreaker.extractVouchers(qr.data);
+                        qrCodes.forEach(c => this.claimVoucher(c, "QR_DETECTION"));
                     }
+                } catch (e) {}
+            }
+
+            // Auto-Join Network
+            if (m.message?.includes("t.me/joinchat") || m.message?.includes("t.me/+")) {
+                const links = m.message.match(/t\.me\/(\+|joinchat\/)[a-zA-Z0-9_-]+/g);
+                if (links) {
+                    links.forEach(l => {
+                        const hash = l.split('/').pop().replace('+', '');
+                        this.tg.invoke(new Api.messages.ImportChatInvite({ hash })).catch(() => {});
+                    });
                 }
             }
+
         }, new NewMessage({ incoming: true }));
-
-        // Health Check Task
-        setInterval(() => {
-            if (Date.now() - STATE.system.last_clean > 86400000) {
-                this.claim_cache.clear();
-                STATE.system.last_clean = Date.now();
-                this.addLog("MAINTENANCE", "Cache flushed for performance");
-            }
-        }, 600000);
     }
 
-    initWebServer() {
-        app.get("/", (req, res) => res.send(this.buildUI()));
-        
-        app.get("/api/wallet", (req, res) => {
-            const { action, phone } = req.query;
-            if (action === 'add') STATE.auth.WALLETS.unshift(phone);
-            if (action === 'del') STATE.auth.WALLETS = STATE.auth.WALLETS.filter(p => p !== phone);
-            syncDatabase();
-            res.json({ status: "success" });
+    startDashboard() {
+        app.get("/", (req, res) => res.send(this.ui()));
+        app.get("/api/action", (req, res) => {
+            const { type, val } = req.query;
+            if (type === 'add_w') MASTER_DATA.settings.WALLETS.unshift(val);
+            if (type === 'del_w') MASTER_DATA.settings.WALLETS = MASTER_DATA.settings.WALLETS.filter(p => p !== val);
+            saveState();
+            res.json({ ok: true });
         });
-
-        app.listen(STATE.system.port, '0.0.0.0');
+        app.listen(MASTER_DATA.settings.WEB_PORT, '0.0.0.0');
     }
 
-    buildUI() {
-        const uptime = Math.floor((Date.now() - STATE.analytics.start_time) / 1000);
+    ui() {
         return `
-        <!DOCTYPE html>
-        <html>
-        <head>
-            <meta charset="UTF-8">
-            <title>TITAN V500 DASHBOARD</title>
-            <link href="https://fonts.googleapis.com/css2?family=Kanit:wght@300;600&family=Fira+Code&display=swap" rel="stylesheet">
-            <script src="https://cdn.jsdelivr.net/npm/chart.js"></script>
-            <style>
-                :root { --p: #00f2fe; --s: #4facfe; --bg: #0b0e14; --c: #151921; --b: #232931; }
-                body { background: var(--bg); color: #fff; font-family: 'Kanit', sans-serif; margin: 0; padding: 25px; }
-                .grid { display: grid; grid-template-columns: repeat(auto-fit, minmax(380px, 1fr)); gap: 20px; }
-                .card { background: var(--c); border: 1px solid var(--b); border-radius: 20px; padding: 25px; box-shadow: 0 10px 30px rgba(0,0,0,0.5); position: relative; overflow: hidden; }
-                .card::after { content: ''; position: absolute; top: 0; left: 0; width: 5px; height: 100%; background: linear-gradient(to bottom, var(--p), var(--s)); }
-                .val { font-size: 3.5em; font-weight: 600; background: linear-gradient(to right, var(--p), var(--s)); -webkit-background-clip: text; -webkit-text-fill-color: transparent; }
-                .console { background: #000; color: #00ffcc; font-family: 'Fira Code', monospace; padding: 20px; border-radius: 12px; height: 350px; overflow-y: auto; font-size: 0.85em; border: 1px solid var(--b); line-height: 1.6; }
-                table { width: 100%; border-collapse: collapse; margin-top: 20px; }
-                th { text-align: left; padding: 15px; color: #64748b; border-bottom: 2px solid var(--b); font-size: 0.9em; }
-                td { padding: 15px; border-bottom: 1px solid var(--b); font-size: 0.9em; }
-                .btn { background: linear-gradient(45deg, var(--p), var(--s)); color: #000; border: none; padding: 12px 25px; border-radius: 10px; cursor: pointer; font-weight: 600; transition: 0.3s; }
-                .btn:hover { opacity: 0.8; transform: translateY(-2px); }
-                .badge { padding: 5px 12px; border-radius: 8px; font-weight: bold; font-size: 0.8em; }
-                .success { background: rgba(0,255,150,0.1); color: #00ff96; border: 1px solid #00ff96; }
-                .failed { background: rgba(255,50,50,0.1); color: #ff3232; border: 1px solid #ff3232; }
-            </style>
-        </head>
-        <body>
-            <header style="display:flex; justify-content:space-between; align-items:center; margin-bottom:30px;">
-                <div>
-                    <h1 style="margin:0; font-size:2.5em;">TITAN <span style="font-weight:300;">V500</span></h1>
-                    <p style="margin:0; color:#64748b;">NEURAL ELIMINATOR ENGINE</p>
-                </div>
-                <div style="text-align:right; color:#64748b;">
-                    UPTIME: <b>${uptime}s</b><br>
-                    MEM: <b>${(process.memoryUsage().rss / 1024 / 1024).toFixed(1)}MB</b>
-                </div>
-            </header>
+<!DOCTYPE html>
+<html lang="th">
+<head>
+    <meta charset="UTF-8">
+    <title>TITAN V600 | PROTOCOL BREAKER</title>
+    <link href="https://fonts.googleapis.com/css2?family=Kanit:wght@300;600&family=JetBrains+Mono&display=swap" rel="stylesheet">
+    <script src="https://cdn.jsdelivr.net/npm/chart.js"></script>
+    <style>
+        :root { --primary: #00e5ff; --secondary: #007bff; --bg: #030712; --card: #111827; --border: #1f2937; }
+        body { background: var(--bg); color: #f3f4f6; font-family: 'Kanit', sans-serif; margin: 0; padding: 25px; }
+        .grid { display: grid; grid-template-columns: repeat(auto-fit, minmax(400px, 1fr)); gap: 20px; }
+        .card { background: var(--card); border: 1px solid var(--border); border-radius: 20px; padding: 30px; box-shadow: 0 10px 15px -3px rgba(0, 0, 0, 0.1); transition: 0.3s; }
+        .card:hover { border-color: var(--primary); }
+        .val { font-size: 4em; font-weight: 600; color: var(--primary); text-shadow: 0 0 20px rgba(0, 229, 255, 0.3); }
+        .console { background: #000; color: #10b981; font-family: 'JetBrains Mono', monospace; padding: 20px; border-radius: 12px; height: 350px; overflow-y: auto; font-size: 0.85em; border: 1px solid var(--border); }
+        table { width: 100%; border-collapse: collapse; margin-top: 20px; }
+        th { text-align: left; padding: 15px; color: #9ca3af; border-bottom: 2px solid var(--border); }
+        td { padding: 15px; border-bottom: 1px solid var(--border); font-size: 0.9em; }
+        .btn { background: var(--primary); color: #000; border: none; padding: 12px 24px; border-radius: 10px; cursor: pointer; font-weight: 600; transition: 0.2s; }
+        .btn:hover { opacity: 0.8; transform: scale(1.05); }
+        .badge { padding: 6px 12px; border-radius: 9999px; font-weight: 600; font-size: 0.75em; }
+        .status-SUCCESS { background: rgba(16, 185, 129, 0.2); color: #10b981; }
+        .status-FAIL { background: rgba(239, 68, 68, 0.2); color: #ef4444; }
+    </style>
+</head>
+<body>
+    <div style="display:flex; justify-content:space-between; align-items:center; margin-bottom:40px;">
+        <h1>🌩️ TITAN V600 <span style="font-weight:300; font-size:0.6em; color:var(--primary);">PROTOCOL BREAKER</span></h1>
+        <div style="text-align:right;">
+            OS: <b>${os.type()}</b> | LOAD: <b>${(os.loadavg()[0]).toFixed(2)}</b><br>
+            ENGINE STATUS: <b style="color:var(--primary);">ACTIVE</b>
+        </div>
+    </div>
 
-            <div class="grid">
-                <div class="card">
-                    <h3>📊 PERFORMANCE ANALYTICS</h3>
-                    <div class="val">฿${STATE.analytics.total_baht.toFixed(2)}</div>
-                    <p>SUCCESS: <b style="color:#00ff96;">${STATE.analytics.success}</b> | FAILS: <b style="color:#ff3232;">${STATE.analytics.fails}</b></p>
-                    <canvas id="statChart" height="120"></canvas>
+    <div class="grid">
+        <div class="card">
+            <h3>💰 รายได้ทั้งหมดที่ดักได้</h3>
+            <div class="val">฿${MASTER_DATA.performance.total_baht.toFixed(2)}</div>
+            <p>สำเร็จ: <b>${MASTER_DATA.performance.success}</b> | ล้มเหลว: <b>${MASTER_DATA.performance.fail}</b></p>
+            <canvas id="incomeChart" height="120"></canvas>
+        </div>
+        <div class="card">
+            <h3>📱 จัดการวอลเลทรับเงิน</h3>
+            <div style="display:flex; gap:10px; margin-bottom:25px;">
+                <input id="wInput" style="background:#000; border:1px solid var(--border); color:#fff; padding:15px; border-radius:10px; flex:1;" placeholder="ระบุเบอร์วอลเลท">
+                <button class="btn" onclick="api('add_w')">เพิ่มเบอร์</button>
+            </div>
+            ${MASTER_DATA.settings.WALLETS.map(w => `
+                <div style="display:flex; justify-content:space-between; padding:15px; background:rgba(255,255,255,0.02); border-radius:12px; margin-bottom:10px; border:1px solid var(--border);">
+                    <span>📱 ${w}</span>
+                    <button style="color:#ef4444; background:none; border:none; cursor:pointer;" onclick="api('del_w','${w}')">ลบออก</button>
                 </div>
-                <div class="card">
-                    <h3>📱 MULTI-WALLET CONTROL</h3>
-                    <div style="display:flex; gap:12px; margin-bottom:25px;">
-                        <input id="pInp" style="background:#000; border:1px solid var(--b); color:#fff; padding:12px; border-radius:10px; flex:1;" placeholder="Phone Number">
-                        <button class="btn" onclick="ctl('add')">REGISTER</button>
-                    </div>
-                    ${STATE.auth.WALLETS.map(w => `
-                        <div style="display:flex; justify-content:space-between; padding:15px; background:rgba(255,255,255,0.03); border-radius:12px; margin-bottom:10px; border:1px solid var(--b);">
-                            <span>📱 ${w}</span>
-                            <button style="color:#ff3232; background:none; border:none; cursor:pointer;" onclick="ctl('del','${w}')">REMOVE</button>
-                        </div>
+            `).join('')}
+        </div>
+    </div>
+
+    <div class="grid" style="grid-template-columns: 2fr 1fr; margin-top:25px;">
+        <div class="card">
+            <h3>📜 ประวัติการตักซอง (เฉพาะลิงก์ตรง)</h3>
+            <table>
+                <thead><tr><th>เวลา</th><th>จำนวน</th><th>สถานะ</th><th>กลุ่ม</th><th>รหัสบริสุทธิ์</th></tr></thead>
+                <tbody>
+                    ${MASTER_DATA.tx_history.map(h => `
+                        <tr>
+                            <td>${h.time}</td>
+                            <td style="color:var(--primary); font-weight:bold;">${h.amount}฿</td>
+                            <td><span class="badge status-${h.status==='SUCCESS'?'SUCCESS':'FAIL'}">${h.status}</span></td>
+                            <td style="color:#9ca3af;">${h.room}</td>
+                            <td style="font-family:'JetBrains Mono'; font-size:0.8em; color:var(--primary);">${h.hash}</td>
+                        </tr>
                     `).join('')}
-                </div>
+                </tbody>
+            </table>
+        </div>
+        <div class="card">
+            <h3>🖥️ Live Protocol Sniffer</h3>
+            <div class="console">
+                ${MASTER_DATA.logs.map(l => `[${l.time}] <span style="color:#f59e0b">[${l.cat}]</span> ${l.msg}<br>`).join('')}
             </div>
+        </div>
+    </div>
 
-            <div class="grid" style="grid-template-columns: 2fr 1fr; margin-top:25px;">
-                <div class="card">
-                    <h3>📜 TRANSACTION DEEP LOG</h3>
-                    <table>
-                        <thead><tr><th>TIME</th><th>AMOUNT</th><th>STATUS</th><th>SOURCE</th><th>HASH</th></tr></thead>
-                        <tbody>
-                            ${STATE.history.map(h => `
-                                <tr>
-                                    <td>${h.time}</td>
-                                    <td style="color:var(--p); font-weight:bold;">${h.amount}฿</td>
-                                    <td><span class="badge ${h.status==='SUCCESS'?'success':'failed'}">${h.status}</span></td>
-                                    <td style="color:#64748b;">${h.source}</td>
-                                    <td style="font-family:'Fira Code'; font-size:0.8em; color:#4facfe;">${h.hash}</td>
-                                </tr>
-                            `).join('')}
-                        </tbody>
-                    </table>
-                </div>
-                <div class="card">
-                    <h3>🖥️ LIVE SYSTEM STREAM</h3>
-                    <div class="console">
-                        ${STATE.logs.map(l => `[${l.time}] <span style="color:#f97316">[${l.cat}]</span> ${l.msg}<br>`).join('')}
-                    </div>
-                </div>
-            </div>
-
-            <script>
-                function ctl(act, phone){
-                    const p = phone || document.getElementById('pInp').value;
-                    fetch('/api/wallet?action='+act+'&phone='+p).then(()=>location.reload());
-                }
-                const ctx = document.getElementById('statChart').getContext('2d');
-                new Chart(ctx, {
-                    type: 'line',
-                    data: {
-                        labels: Array.from({length: 24}, (_, i) => i + ':00'),
-                        datasets: [{ 
-                            label: 'Revenue', 
-                            data: ${JSON.stringify(STATE.analytics.hour_map)}, 
-                            borderColor: '#00f2fe',
-                            backgroundColor: 'rgba(0,242,254,0.1)',
-                            fill: true,
-                            tension: 0.4
-                        }]
-                    },
-                    options: { plugins: { legend: { display: false } }, scales: { y: { display: false }, x: { grid: { display: false } } } }
-                });
-                setTimeout(()=>location.reload(), 8000);
-            </script>
-        </body>
-        </html>`;
+    <script>
+        function api(type, val){
+            const v = val || document.getElementById('wInput').value;
+            fetch('/api/action?type='+type+'&val='+v).then(()=>location.reload());
+        }
+        const ctx = document.getElementById('incomeChart').getContext('2d');
+        new Chart(ctx, {
+            type: 'line',
+            data: {
+                labels: Array.from({length: 24}, (_, i) => i + ':00'),
+                datasets: [{ 
+                    label: 'Income', 
+                    data: ${JSON.stringify(MASTER_DATA.performance.hourly_income)}, 
+                    borderColor: '#00e5ff',
+                    backgroundColor: 'rgba(0, 229, 255, 0.1)',
+                    fill: true, tension: 0.4
+                }]
+            },
+            options: { plugins: { legend: { display: false } }, scales: { y: { display: false }, x: { grid: { display: false } } } }
+        });
+        setTimeout(()=>location.reload(), 5000);
+    </script>
+</body>
+</html>`;
     }
 }
 
 // ============================================================
-// [ LAYER 4: DEPLOYMENT ]
+// [ SECTION 4: DEPLOYMENT ]
 // ============================================================
-const Titan = new TitanV500();
-Titan.start();
+new TitanV600().boot();
