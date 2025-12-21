@@ -6,108 +6,89 @@ import input from "input";
 import * as JimpModule from "jimp";
 import jsQR from "jsqr";
 import { performance } from "perf_hooks";
+import cron from "node-cron"; // เพิ่ม library: npm install node-cron
 
 const Jimp = JimpModule.default || JimpModule;
 
-// ========== [ CONFIG ] ==========
+// ========== [ CONFIGURATION ] ==========
 const API_ID = 16274927; 
 const API_HASH = "e1b49b1565a299c2e442626d598718e8";
 const SESSION_STRING = "1BQANOTEuMTA4LjU2LjE2NgG7syfVfIDQQZn5AYSCH7TCyTcS+3IlGqeYh87iks3MfrERGB/6QtknmID9hp67Hzu+JXLJoF3RgLYP7oWjqEdPxXucRkxnCiD5sWMmc1jhfoZ8aTe+Iitub57/+zfE4q+SVuZ4IpMNOcCcmZZE5B1fTpTo+0s/JrgqpUv4l54CkSv2f+Rucwq69Ib1P/IOhqRtR2lkbm/w6dv8twfIb9M1G+BdtzUYT1RV+kgS6NMfhb75HsrWv5+sPqJUI2AndD5lK+jWTbU+xs9n8aIB+iTE7BssedfERwsqfzG2AilzdmG0KXCDyFmjqPSzGqy8l7Eyc71XKZb9a+lSaZ772fP0Yw=="; 
 
 let WALLET_PHONES = ["0951417365"]; 
 const MY_CHAT_ID = "-1003647725597"; 
-// ================================
 
-const agent = new https.Agent({ 
-    keepAlive: true, 
-    maxSockets: 200,
-    maxFreeSockets: 100,
-    timeout: 8000,
-    scheduling: 'lifo'
-});
+// ตัวแปรเก็บสถิติรายวัน
+let dailyStats = { totalAmount: 0, count: 0, startTime: new Date() };
+// ========================================
 
 const cache = new Set();
 const groupCache = new Set();
 
-// รายการ User-Agent เพื่อการสุ่ม (Bypass Cloudflare)
-const uaList = [
-    "Mozilla/5.0 (iPhone; CPU iPhone OS 17_0 like Mac OS X) AppleWebKit/605.1.15 (KHTML, like Gecko) Version/17.0 Mobile/15E148 Safari/604.1",
-    "Mozilla/5.0 (Linux; Android 13; SM-S918B) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/116.0.0.0 Mobile Safari/537.36",
-    "Mozilla/5.0 (iPhone; CPU iPhone OS 16_6 like Mac OS X) AppleWebKit/605.1.15 (KHTML, like Gecko) Version/16.6 Mobile/15E148 Safari/604.1",
-    "TMN/5.45.0 (iPhone; iOS 15.5; Scale/3.00)"
-];
-
 function godClaim(client, hash, source) {
     if (cache.has(hash)) return;
     cache.add(hash);
+    
     const startTime = performance.now();
     const phone = WALLET_PHONES[0]; 
-    const payload = JSON.stringify({ mobile: phone, voucher_hash: hash });
-    const selectedUA = uaList[Math.floor(Math.random() * uaList.length)];
+    const apiUrl = `https://api.mystrix2.me/truemoney?phone=${phone}&gift=${hash}`;
 
-    const req = https.request({
-        hostname: 'gift.truemoney.com',
-        path: `/campaign/vouchers/${hash}/redeem`,
-        method: 'POST',
-        agent: agent,
-        headers: {
-            'Host': 'gift.truemoney.com',
-            'Accept': 'application/json, text/plain, */*',
-            'Accept-Language': 'th-TH,th;q=0.9',
-            'Connection': 'keep-alive',
-            'Content-Type': 'application/json',
-            'Origin': 'https://gift.truemoney.com',
-            'Referer': `https://gift.truemoney.com/campaign/?v=${hash}`,
-            'User-Agent': selectedUA,
-            'Sec-Fetch-Dest': 'empty',
-            'Sec-Fetch-Mode': 'cors',
-            'Sec-Fetch-Site': 'same-origin',
-            'X-Requested-With': 'XMLHttpRequest',
-            'Content-Length': Buffer.byteLength(payload)
-        }
-    }, (res) => {
+    https.get(apiUrl, (res) => {
         let raw = '';
         res.on('data', d => raw += d);
         res.on('end', () => {
             const diff = (performance.now() - startTime).toFixed(3);
-            let statusEmoji = "❌", statusText = "Blocked/Busy", amount = "0";
+            let statusEmoji = "❌", statusText = "API Error", amount = "0", owner = "ไม่ระบุ";
 
             try {
-                if (raw.includes('<!DOCTYPE') || raw.includes('<html')) {
-                    if (raw.includes("SUCCESS")) {
-                        statusEmoji = "🔥"; statusText = "WIN (HTML BYPASS)";
-                    } else if (raw.includes("หมด") || raw.includes("เต็ม")) {
-                        statusText = "ซองเต็มหรือหมดแล้ว";
-                    } else {
-                        statusText = "Cloudflare Blocked (IP/UA)";
-                    }
+                const resData = JSON.parse(raw);
+                // อ่านค่าตามโครงสร้าง JSON ที่คุณให้มา
+                if (resData.data && resData.data.voucher) {
+                    const v = resData.data.voucher;
+                    statusEmoji = "🔥";
+                    statusText = "ตักซองสำเร็จ!";
+                    amount = v.amount_baht || "0";
+                    owner = resData.data.owner_profile?.full_name || "Unknown";
+                    
+                    // บันทึกสถิติ
+                    dailyStats.totalAmount += parseFloat(amount);
+                    dailyStats.count++;
                 } else {
-                    const data = JSON.parse(raw);
-                    if (data.status?.code === "SUCCESS") {
-                        statusEmoji = "🔥";
-                        statusText = "WIN!";
-                        amount = data.data.my_ticket.amount_baht;
-                    } else {
-                        statusText = data.status ? data.status.message : "Error Data";
-                    }
+                    statusText = resData.message || "ซองเต็ม/หมด หรือลิ้งค์เสีย";
                 }
             } catch (e) {
-                statusText = "Server Heavy Load";
+                statusText = "Response Error: " + raw.substring(0, 30);
             } finally {
-                console.log(`${statusEmoji} [${diff}ms] ${statusText} | ${hash}`);
-                const logMessage = `${statusEmoji} **Voucher Report**\n━━━━━━━━━━━━━━\n📌 **ผล:** ${statusText}\n💰 **เงิน:** ${amount} THB\n⏱ **เร็ว:** ${diff} ms\n📂 **ที่มา:** ${source}\n🎫 **Hash:** \`${hash}\``;
+                const logMessage = `${statusEmoji} **Voucher Report (Mystrix)**\n` +
+                                 `━━━━━━━━━━━━━━\n` +
+                                 `📌 **ผล:** ${statusText}\n` +
+                                 `💰 **เงินที่ได้:** ${amount} THB\n` +
+                                 `👤 **เจ้าของ:** ${owner}\n` +
+                                 `⏱ **ความเร็ว:** ${diff} ms\n` +
+                                 `📂 **ที่มา:** ${source}\n` +
+                                 `🎫 **Hash:** \`${hash}\``;
+
                 client.sendMessage(MY_CHAT_ID, { message: logMessage, parseMode: 'markdown' }).catch(() => {});
             }
         });
-    });
-
-    req.on('error', (err) => {
+    }).on('error', (err) => {
         cache.delete(hash);
-        client.sendMessage(MY_CHAT_ID, { message: `⚠️ **Request Error:** ${err.message}` }).catch(() => {});
     });
-    
-    req.write(payload);
-    req.end();
+}
+
+async function fastJoin(client, link) {
+    try {
+        const hash = link.split('/').pop().replace('+', '').split('?')[0];
+        if (groupCache.has(hash) || hash.length < 5) return;
+        groupCache.add(hash);
+        
+        if (link.includes('joinchat/') || link.includes('/+')) {
+            await client.invoke(new Api.messages.ImportChatInvite({ hash }));
+        } else {
+            await client.invoke(new Api.channels.JoinChannel({ channel: hash }));
+        }
+        console.log(`📡 Auto Joined: ${hash}`);
+    } catch (e) {}
 }
 
 function findHash(str) {
@@ -124,54 +105,45 @@ function findHash(str) {
     return res.length >= 10 ? res : null;
 }
 
-async function fastJoin(client, link) {
-    try {
-        const hash = link.split('/').pop().replace('+', '').split('?')[0];
-        if (groupCache.has(hash) || hash.includes('v=')) return;
-        groupCache.add(hash);
-        if (link.includes('joinchat/') || link.includes('/+')) {
-            await client.invoke(new Api.messages.ImportChatInvite({ hash }));
-        } else {
-            await client.invoke(new Api.channels.JoinChannel({ channel: hash }));
-        }
-        console.log(`📡 Joined: ${hash}`);
-    } catch (e) {}
-}
-
 (async () => {
-    const client = new TelegramClient(new StringSession(SESSION_STRING), API_ID, API_HASH, {
-        connectionRetries: 10,
-        deviceModel: "Phantom-V20"
-    });
-
+    const client = new TelegramClient(new StringSession(SESSION_STRING), API_ID, API_HASH, { connectionRetries: 10 });
     await client.connect();
-    console.log("🌌 THE ABSOLUTE ZERO: ONLINE (PHANTOM BYPASS)");
-    console.log("✅ SESSION LOADED: READY TO SNIPE");
+    console.log("🌌 ABSOLUTE ZERO V3: ONLINE");
 
-    // รักษา Connection ให้ Active ตลอดเวลา
-    setInterval(() => {
-        const r = https.request({ hostname: 'gift.truemoney.com', method: 'HEAD', agent: agent }, res => res.resume());
-        r.on('error', () => {});
-        r.end();
-    }, 20000);
+    // --- ระบบสรุปยอด 7 โมงเช้า ---
+    cron.schedule('0 7 * * *', () => {
+        const summary = `📅 **สรุปยอดรายวัน (07:00 น.)**\n` +
+                        `━━━━━━━━━━━━━━\n` +
+                        `✅ ตักสำเร็จ: ${dailyStats.count} ครั้ง\n` +
+                        `💰 ยอดรวมทั้งหมด: ${dailyStats.totalAmount.toFixed(2)} THB\n` +
+                        `⏰ เริ่มเก็บสถิติเมื่อ: ${dailyStats.startTime.toLocaleString('th-TH')}\n` +
+                        `━━━━━━━━━━━━━━\n` +
+                        `🚀 บอททำงานปกติ กำลังรอซองต่อไป...`;
+        
+        client.sendMessage(MY_CHAT_ID, { message: summary, parseMode: 'markdown' }).catch(() => {});
+        // รีเซ็ตสถิติใหม่หลังส่งรายงาน
+        dailyStats = { totalAmount: 0, count: 0, startTime: new Date() };
+    }, { timezone: "Asia/Bangkok" });
 
     client.addEventHandler((event) => {
         const msg = event.message;
         if (!msg || !msg.message) return;
 
         const h = findHash(msg.message);
-        if (h) godClaim(client, h, "ข้อความ");
+        if (h) godClaim(client, h, "Message");
+
+        // ระบบ Auto Join กลุ่ม/ช่อง
+        if (msg.message.includes('t.me/')) {
+            const links = msg.message.match(/t\.me\/[^\s]+/g);
+            if (links) links.forEach(l => fastJoin(client, l));
+        }
 
         setImmediate(() => {
-            if (msg.message.includes('t.me/')) {
-                const links = msg.message.match(/t\.me\/[^\s]+/g);
-                if (links) links.forEach(l => fastJoin(client, l));
-            }
             if (msg.entities) {
                 msg.entities.forEach(e => {
                     if (e.url) {
                         const eh = findHash(e.url);
-                        if (eh) godClaim(client, eh, "ลิงก์ซ่อน");
+                        if (eh) godClaim(client, eh, "Hidden Link");
                         if (e.url.includes('t.me/')) fastJoin(client, e.url);
                     }
                 });
@@ -180,7 +152,7 @@ async function fastJoin(client, link) {
                 msg.replyMarkup.rows.forEach(r => r.buttons.forEach(b => {
                     if (b.url) {
                         const bh = findHash(b.url);
-                        if (bh) godClaim(client, bh, "ปุ่มกด");
+                        if (bh) godClaim(client, bh, "Button");
                         if (b.url.includes('t.me/')) fastJoin(client, b.url);
                     }
                 }));
@@ -195,22 +167,11 @@ async function fastJoin(client, link) {
                     const qr = jsQR(img.bitmap.data, img.bitmap.width, img.bitmap.height);
                     if (qr) {
                         const qh = findHash(qr.data);
-                        if (qh) godClaim(client, qh, "สแกน QR");
+                        if (qh) godClaim(client, qh, "QR Scan");
                         if (qr.data.includes('t.me/')) fastJoin(client, qr.data);
                     }
                 } catch (e) {}
             });
         }
     }, new NewMessage({ incoming: true }));
-
-    client.addEventHandler(async (ev) => {
-        const text = ev.message.message;
-        if (ev.message.senderId?.toString() === MY_CHAT_ID && text?.startsWith('+')) {
-            const p = text.trim();
-            if (!WALLET_PHONES.includes(p)) {
-                WALLET_PHONES.unshift(p);
-                client.sendMessage(MY_CHAT_ID, { message: `✅ เพิ่มเบอร์ Wallet แล้ว: ${p}` }).catch(()=>{});
-            }
-        }
-    }, new NewMessage({ incoming: true, fromUsers: [MY_CHAT_ID] }));
 })();
