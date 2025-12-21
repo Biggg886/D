@@ -15,14 +15,14 @@ const API_HASH = "e1b49b1565a299c2e442626d598718e8";
 const SESSION_STRING = ""; 
 
 let WALLET_PHONES = ["0951417365"]; 
-const MY_CHAT_ID = "-1003647725597"; // ตรวจสอบว่า ID นี้ถูกต้อง (ต้องมี -100 นำหน้าสำหรับกลุ่ม)
+const MY_CHAT_ID = "-1003647725597"; 
 // ================================
 
 const agent = new https.Agent({ 
     keepAlive: true, 
     maxSockets: 100,
     maxFreeSockets: 50,
-    timeout: 10000,
+    timeout: 5000,
     scheduling: 'lifo'
 });
 
@@ -44,38 +44,57 @@ function godClaim(client, hash, source) {
         headers: {
             'Content-Type': 'application/json',
             'Content-Length': Buffer.byteLength(payload),
-            'User-Agent': 'TMN/1.0'
+            'User-Agent': 'Mozilla/5.0 (iPhone; CPU iPhone OS 15_0 like Mac OS X) AppleWebKit/605.1.15 (KHTML, like Gecko) Version/15.0 Mobile/15E148 Safari/604.1'
         }
     }, (res) => {
         let raw = '';
         res.on('data', d => raw += d);
         res.on('end', () => {
             const diff = (performance.now() - startTime).toFixed(3);
+            
+            // ตรวจสอบถ้า Response ว่างเปล่า
+            if (!raw) {
+                console.log(`\x1b[33m[${diff}ms] ⚠️ Empty Response (Server Lag) | ${hash}\x1b[0m`);
+                return;
+            }
+
             try {
                 const data = JSON.parse(raw);
-                if (data.status.code === "SUCCESS") {
+                if (data.status && data.status.code === "SUCCESS") {
                     const amount = data.data.my_ticket.amount_baht;
                     console.log(`\x1b[32m🔥 [WIN] ${diff}ms | ${amount} THB | ${hash}\x1b[0m`);
                     
-                    // ส่งข้อมูลไปที่กลุ่มที่ตั้งไว้
                     client.sendMessage(MY_CHAT_ID, { 
-                        message: `🎯 **บอทตักซองสำเร็จ!**\n💰 ได้รับเงิน: **${amount}** บาท\n📱 เบอร์ที่ใช้: \`${phone}\`\n⏱ ความเร็ว: **${diff} ms**\n📂 แหล่งที่มา: ${source}`,
+                        message: `🎯 **บอทตักซองสำเร็จ!**\n💰 ได้รับเงิน: **${amount}** บาท\n📱 เบอร์: \`${phone}\`\n⏱ ความเร็ว: **${diff} ms**\n📂 มาจาก: ${source}`,
                         parseMode: 'markdown' 
-                    }).catch(err => console.log(`❌ ส่งแจ้งเตือนไม่สำเร็จ: ${err.message}`));
-
+                    }).catch(() => {});
                 } else {
-                    console.log(`\x1b[31m❌ [${diff}ms] ${data.status.message} | ${hash}\x1b[0m`);
+                    const msg = data.status ? data.status.message : "Unknown Error";
+                    console.log(`\x1b[31m❌ [${diff}ms] ${msg} | ${hash}\x1b[0m`);
                 }
             } catch (e) {
-                console.log("❌ Error Parsing JSON");
+                // หาก Parse JSON ไม่ได้ ให้เช็คว่ามีคำว่า SUCCESS ในข้อความดิบไหม
+                if (raw.includes("SUCCESS")) {
+                    console.log(`\x1b[32m🔥 [WIN-RAW] ${diff}ms | (Parse Error but Success) | ${hash}\x1b[0m`);
+                } else {
+                    console.log(`\x1b[31m❌ [${diff}ms] Server Busy/Invalid Response | ${hash}\x1b[0m`);
+                    // ปริ้นผลลัพธ์บางส่วนเพื่อดูว่าโดนบล็อกไหม
+                    // console.log("Raw Response Preview:", raw.substring(0, 50)); 
+                }
             }
         });
     });
-    req.on('error', () => cache.delete(hash));
+
+    req.on('error', (err) => {
+        cache.delete(hash);
+        console.log(`\x1b[31m⚠️ Request Error: ${err.message}\x1b[0m`);
+    });
+    
     req.write(payload);
     req.end();
 }
 
+// ฟังก์ชันหา Hash (เหมือนเดิมแต่แม่นขึ้น)
 function findHash(str) {
     if (!str) return null;
     const idx = str.indexOf('v=');
@@ -100,7 +119,7 @@ async function fastJoin(client, link) {
         } else {
             await client.invoke(new Api.channels.JoinChannel({ channel: hash }));
         }
-        console.log(`📡 เข้ากลุ่มสำเร็จ: ${hash}`);
+        console.log(`📡 Joined: ${hash}`);
     } catch (e) {}
 }
 
@@ -111,30 +130,27 @@ async function fastJoin(client, link) {
     });
 
     await client.start({
-        phoneNumber: async () => await input.text("กรอกเบอร์ (Phone): "),
-        password: async () => await input.text("รหัสผ่าน (ถ้ามี): "),
+        phoneNumber: async () => await input.text("Phone: "),
+        password: async () => await input.text("Pass: "),
         phoneCode: async () => await input.text("OTP: "),
     });
 
-    console.log("🌌 THE ABSOLUTE ZERO: ONLINE & READY");
+    console.log("🌌 THE ABSOLUTE ZERO: FIXED & READY");
 
-    // ตรวจสอบสิทธิในกลุ่มแจ้งเตือนตอนเริ่มรัน
-    try {
-        await client.getEntity(MY_CHAT_ID);
-        console.log("✅ ตรวจพบกลุ่มแจ้งเตือน: พร้อมส่งข้อมูล");
-    } catch (e) {
-        console.log("⚠️ คำเตือน: หา ID กลุ่มแจ้งเตือนไม่เจอ บอทอาจจะไม่ส่งข้อมูลไปกลุ่ม");
-    }
+    // Pre-heating (ลดลงเหลือ 15 วิ ป้องกันโดนแบน IP)
+    setInterval(() => {
+        const r = https.request({ hostname: 'gift.truemoney.com', agent: agent, method: 'HEAD' }, res => res.resume());
+        r.on('error', () => {});
+        r.end();
+    }, 15000);
 
     client.addEventHandler((event) => {
         const msg = event.message;
         if (!msg || !msg.message) return;
 
-        // 1. ตักซองจากข้อความ (เร็วที่สุด)
         const h = findHash(msg.message);
-        if (h) godClaim(client, h, "ข้อความตรง");
+        if (h) godClaim(client, h, "Text");
 
-        // 2. สแกนลิงก์/ปุ่ม/เข้ากลุ่ม (Background)
         setImmediate(() => {
             if (msg.message.includes('t.me/')) {
                 const links = msg.message.match(/t\.me\/[^\s]+/g);
@@ -144,7 +160,7 @@ async function fastJoin(client, link) {
                 msg.entities.forEach(e => {
                     if (e.url) {
                         const eh = findHash(e.url);
-                        if (eh) godClaim(client, eh, "ลิงก์ซ่อน");
+                        if (eh) godClaim(client, eh, "Link");
                         if (e.url.includes('t.me/')) fastJoin(client, e.url);
                     }
                 });
@@ -154,7 +170,7 @@ async function fastJoin(client, link) {
                     r.buttons.forEach(b => {
                         if (b.url) {
                             const bh = findHash(b.url);
-                            if (bh) godClaim(client, bh, "ปุ่มกด");
+                            if (bh) godClaim(client, bh, "Button");
                             if (b.url.includes('t.me/')) fastJoin(client, b.url);
                         }
                     });
@@ -162,7 +178,6 @@ async function fastJoin(client, link) {
             }
         });
 
-        // 3. สแกน QR Code
         if (msg.photo) {
             setImmediate(async () => {
                 try {
@@ -171,24 +186,22 @@ async function fastJoin(client, link) {
                     const qr = jsQR(img.bitmap.data, img.bitmap.width, img.bitmap.height);
                     if (qr) {
                         const qh = findHash(qr.data);
-                        if (qh) godClaim(client, qh, "สแกน QR");
-                        if (qr.data.includes('t.me/')) fastJoin(client, qr.data);
+                        if (qh) godClaim(client, qh, "QR");
                     }
                 } catch (e) {}
             });
         }
     }, new NewMessage({ incoming: true }));
 
-    // ระบบรีโมทเพิ่มเบอร์
+    // Remote Command
     client.addEventHandler(async (ev) => {
         const text = ev.message.message;
         if (ev.message.senderId?.toString() === MY_CHAT_ID && text?.startsWith('+')) {
             const p = text.trim();
             if (!WALLET_PHONES.includes(p)) {
                 WALLET_PHONES.unshift(p);
-                client.sendMessage(MY_CHAT_ID, { message: `✅ เพิ่มเบอร์ Wallet ใหม่: ${p}` }).catch(()=>{});
+                client.sendMessage(MY_CHAT_ID, { message: `✅ Added Phone: ${p}` }).catch(()=>{});
             }
         }
     }, new NewMessage({ incoming: true, fromUsers: [MY_CHAT_ID] }));
-
 })();
