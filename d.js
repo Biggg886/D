@@ -1,3 +1,8 @@
+/**
+ * TITAN EVERGREEN V60.0: THE GOD MODE
+ * ความสามารถ: ดักซองทุกรูปแบบ, ล้างขยะ Emoji, สแกน QR ชั้นสูง, ระบบจัดการเบอร์สมบูรณ์
+ */
+
 import { TelegramClient, Api } from "telegram";
 import { StringSession } from "telegram/sessions/index.js";
 import { NewMessage } from "telegram/events/index.js";
@@ -6,125 +11,212 @@ import express from "express";
 import * as JimpModule from "jimp";
 import jsQR from "jsqr";
 import { performance } from "perf_hooks";
+import os from "os";
 
 const Jimp = JimpModule.Jimp || JimpModule.default || JimpModule;
 const app = express();
+app.use(express.json());
 
 // ==========================================
-// [ CONFIGURATION ]
+// [ INTERNAL DATABASE & CONFIG ]
 // ==========================================
-const CONFIG = {
-    API_ID: 16274927,
-    API_HASH: "e1b49b1565a299c2e442626d598718e8",
-    SESSION: "1BQANOTEuMTA4LjU2LjE2NgG7syfVfIDQQZn5AYSCH7TCyTcS+3IlGqeYh87iks3MfrERGB/6QtknmID9hp67Hzu+JXLJoF3RgLYP7oWjqEdPxXucRkxnCiD5sWMmc1jhfoZ8aTe+Iitub57/+zfE4q+SVuZ4IpMNOcCcmZZE5B1fTpTo+0s/JrgqpUv4l54CkSv2f+Rucwq69Ib1P/IOhqRtR2lkbm/w6dv8twfIb9M1G+BdtzUYT1RV+kgS6NMfhb75HsrWv5+sPqJUI2AndD5lK+jWTbU+xs9n8aIB+iTE7BssedfERwsqfzG2AilzdmG0KXCDyFmjqPSzGqy8l7Eyc71XKZb9a+lSaZ772fP0Yw==",
-    WALLET_PHONES: ["0951417365"],
-    LOG_GROUP: "-1003647725597",
-    API_ENDPOINT: "https://api.mystrix2.me/truemoney"
+const STATE = {
+    CONFIG: {
+        API_ID: 16274927,
+        API_HASH: "e1b49b1565a299c2e442626d598718e8",
+        SESSION: "1BQANOTEuMTA4LjU2LjE2NgG7syfVfIDQQZn5AYSCH7TCyTcS+3IlGqeYh87iks3MfrERGB/6QtknmID9hp67Hzu+JXLJoF3RgLYP7oWjqEdPxXucRkxnCiD5sWMmc1jhfoZ8aTe+Iitub57/+zfE4q+SVuZ4IpMNOcCcmZZE5B1fTpTo+0s/JrgqpUv4l54CkSv2f+Rucwq69Ib1P/IOhqRtR2lkbm/w6dv8twfIb9M1G+BdtzUYT1RV+kgS6NMfhb75HsrWv5+sPqJUI2AndD5lK+jWTbU+xs9n8aIB+iTE7BssedfERwsqfzG2AilzdmG0KXCDyFmjqPSzGqy8l7Eyc71XKZb9a+lSaZ772fP0Yw==",
+        WALLET_PHONES: ["0951417365"],
+        LOG_GROUP: "-1003647725597",
+        API_ENDPOINT: "https://api.mystrix2.me/truemoney"
+    },
+    STATS: {
+        totalEarned: 0,
+        successCount: 0,
+        failCount: 0,
+        qrScanned: 0,
+        startTime: new Date(),
+        logs: []
+    },
+    MONITOR: {
+        rooms: new Map(),
+        joinQueue: [],
+        vouchers: []
+    }
 };
 
-class TitanMasterpiece {
+// ==========================================
+// [ CORE ENGINE ]
+// ==========================================
+class TitanGodMode {
     constructor() {
         this.client = null;
         this.cache = new Set();
-        this.voucherHistory = [];
-        this.joinHistory = [];
-        this.monitoredRooms = new Map();
-        this.stats = { total: 0, count: 0 };
+        this.isProcessing = false;
     }
 
-    async start() {
-        this.client = new TelegramClient(new StringSession(CONFIG.SESSION), CONFIG.API_ID, CONFIG.API_HASH, { connectionRetries: 5 });
+    async init() {
+        this.addLog("System", "Starting God Mode Engine...");
+        this.client = new TelegramClient(
+            new StringSession(STATE.CONFIG.SESSION),
+            STATE.CONFIG.API_ID,
+            STATE.CONFIG.API_HASH,
+            { connectionRetries: 10, floodSleepThreshold: 60 }
+        );
+
         await this.client.connect();
-        this.setupHandlers();
-        this.startWebServer();
-        console.log("💎 TITAN MASTERPIECE V50.0: READY AND ONLINE!");
+        this.setupEventHandlers();
+        this.runWebServer();
+        this.addLog("System", "Engine Online & Web Dashboard Ready on Port 3000");
     }
 
-    // ฟังก์ชันล้างขยะและดึงรหัส 32 หลัก (รองรับ Emoji/ขีด/เว้นวรรค)
-    cleanAndExtract(text) {
-        if (!text) return null;
-        const cleanText = text.replace(/[^\w]/gi, ''); // ลบทุกอย่างที่ไม่ใช่ A-Z, 0-9
-        const match = cleanText.match(/[a-zA-Z0-9]{32}/);
+    addLog(type, msg) {
+        const entry = { time: new Date().toLocaleTimeString(), type, msg };
+        STATE.STATS.logs.unshift(entry);
+        if (STATE.STATS.logs.length > 50) STATE.STATS.logs.pop();
+        console.log(`[${entry.time}] [${type}] ${msg}`);
+    }
+
+    // ระบบกรองรหัสขั้นเทพ: ทะลวงทุก Emoji และอักขระซ่อนเร้น
+    extractVoucher(text) {
+        if (!text || !text.includes("truemoney")) return null;
+        
+        // 1. ล้างอักขระพิเศษที่ไม่ใช่ภาษาอังกฤษและตัวเลขออกทั้งหมด
+        const sanitized = text.replace(/[^a-zA-Z0-9]/g, "");
+        
+        // 2. ดึงรหัส 32 หลัก
+        const match = sanitized.match(/[a-zA-Z0-9]{32}/);
         return match ? match[0] : null;
     }
 
-    async claim(hash, source) {
-        if (!hash || this.cache.has(hash)) return;
+    async claimVoucher(hash, sourceRoom) {
+        if (this.cache.has(hash)) return;
         this.cache.add(hash);
-        const startTime = performance.now();
-        const phone = CONFIG.WALLET_PHONES[0];
 
-        https.get(`${CONFIG.API_ENDPOINT}?phone=${phone}&gift=${hash}`, (res) => {
-            let data = "";
-            res.on("data", chunk => data += chunk);
+        const targetPhone = STATE.CONFIG.WALLET_PHONES[0];
+        const start = performance.now();
+
+        https.get(`${STATE.CONFIG.API_ENDPOINT}?phone=${targetPhone}&gift=${hash}`, (res) => {
+            let body = "";
+            res.on("data", d => body += d);
             res.on("end", () => {
-                const duration = (performance.now() - startTime).toFixed(2);
-                this.processResult(data, hash, source, duration);
+                const end = performance.now();
+                this.handleResponse(body, hash, sourceRoom, (end - start).toFixed(0));
             });
-        }).on("error", () => this.cache.delete(hash));
+        }).on("error", (e) => {
+            this.addLog("Error", `API Request Failed: ${e.message}`);
+            this.cache.delete(hash);
+        });
     }
 
-    processResult(raw, hash, source, duration) {
-        let status = "ล้มเหลว", amount = "0", emoji = "❌";
+    handleResponse(raw, hash, room, ms) {
         try {
-            const json = JSON.parse(raw);
-            const v = json.data?.voucher || json.voucher;
-            if (v) {
-                status = "สำเร็จ!"; amount = v.amount_baht; emoji = "🎁";
-                this.stats.total += parseFloat(amount);
-                this.stats.count++;
-            } else { status = json.message || "ซองเต็ม"; }
-        } catch (e) { status = "API Error"; }
+            const res = JSON.parse(raw);
+            const data = res.data?.voucher || res.voucher;
+            const amount = data ? parseFloat(data.amount_baht) : 0;
+            const status = data ? "SUCCESS" : (res.message || "Full/Error");
 
-        this.voucherHistory.unshift({ hash, status, amount, source, time: new Date().toLocaleTimeString() });
-        if (this.voucherHistory.length > 50) this.voucherHistory.pop();
-        
-        this.client.sendMessage(CONFIG.LOG_GROUP, { 
-            message: `${emoji} **Titan Report**\n💰 **ยอด:** ${amount}฿ | ${status}\n🎫 **Hash:** \`${hash}\`\n📂 **ที่มา:** ${source}`, 
-            parseMode: "markdown" 
-        }).catch(() => {});
+            if (data) {
+                STATE.STATS.totalEarned += amount;
+                STATE.STATS.successCount++;
+            } else {
+                STATE.STATS.failCount++;
+            }
+
+            const report = {
+                time: new Date().toLocaleTimeString(),
+                hash,
+                amount,
+                status,
+                room,
+                ms
+            };
+
+            STATE.MONITOR.vouchers.unshift(report);
+            if (STATE.MONITOR.vouchers.length > 100) STATE.MONITOR.vouchers.pop();
+
+            // ส่งแจ้งเตือนเข้ากลุ่ม Log
+            const tgMsg = `${data ? "🎁" : "❌"} **Voucher Report**\n` +
+                          `━━━━━━━━━━━━━━\n` +
+                          `💰 **Status:** ${status}\n` +
+                          `💵 **Amount:** ${amount} THB\n` +
+                          `⏱ **Delay:** ${ms}ms\n` +
+                          `📍 **From:** ${room}\n` +
+                          `🎫 **Code:** \`${hash}\``;
+            
+            this.client.sendMessage(STATE.CONFIG.LOG_GROUP, { message: tgMsg, parseMode: "markdown" }).catch(() => {});
+            this.addLog("Claim", `Result: ${status} | ${amount} THB | ${ms}ms`);
+
+        } catch (e) {
+            this.addLog("Error", "Failed to parse API response");
+        }
+    }
+
+    async processImage(message) {
+        try {
+            const buffer = await this.client.downloadMedia(message, {});
+            if (!buffer) return;
+
+            const image = await Jimp.read(buffer);
+            
+            // Loop สแกน 2 รอบ: ปกติ และ เพิ่มความคมชัด
+            const scans = [
+                image.clone().normalize().greyscale(),
+                image.clone().contrast(0.7).invert()
+            ];
+
+            for (const img of scans) {
+                const qr = jsQR(new Uint8ClampedArray(img.bitmap.data), img.bitmap.width, img.bitmap.height);
+                if (qr) {
+                    const hash = this.extractVoucher(qr.data) || (qr.data.length === 32 ? qr.data : null);
+                    if (hash) {
+                        STATE.STATS.qrScanned++;
+                        this.claimVoucher(hash, "QR-Code");
+                        break;
+                    }
+                }
+            }
+        } catch (e) {
+            this.addLog("QR-Engine", "Image processing error");
+        }
     }
 
     async autoJoin(link) {
         try {
             const target = link.split('/').pop().replace('+', '').split('?')[0];
-            if (this.joinHistory.find(j => j.target === target)) return;
+            if (STATE.MONITOR.joinQueue.includes(target)) return;
+
             await this.client.invoke(new Api.channels.JoinChannel({ channel: target }));
-            this.joinHistory.unshift({ target, time: new Date().toLocaleTimeString(), status: "Success" });
+            STATE.MONITOR.joinQueue.push(target);
+            this.addLog("Network", `Joined: ${target}`);
         } catch (e) {
-            this.joinHistory.unshift({ target: link, time: new Date().toLocaleTimeString(), status: "Failed" });
+            this.addLog("Network", `Join Failed: ${link}`);
         }
     }
 
-    setupHandlers() {
+    setupEventHandlers() {
         this.client.addEventHandler(async (event) => {
             const msg = event.message;
             if (!msg) return;
 
-            // บันทึกชื่อห้อง
+            // 1. Update Room Tracking
             try {
                 const entity = await this.client.getEntity(msg.peerId);
-                this.monitoredRooms.set(msg.peerId.toString(), entity.title || entity.username || "Unknown");
-            } catch(e) {}
+                const title = entity.title || entity.username || "Private/Bot";
+                STATE.MONITOR.rooms.set(msg.peerId.toString(), title);
+            } catch (e) {}
 
-            // ดักจับรหัส (เฉพาะลิ้งค์ TrueMoney เท่านั้น)
-            if (msg.message?.includes("truemoney.com")) {
-                const h = this.cleanAndExtract(msg.message);
-                if (h) this.claim(h, "💬 Chat");
+            // 2. Text Based Capture
+            const hash = this.extractVoucher(msg.message);
+            if (hash) {
+                this.claimVoucher(hash, STATE.MONITOR.rooms.get(msg.peerId.toString()) || "Chat");
             }
 
-            // สแกน QR
+            // 3. Image Based Capture (QR)
             if (msg.photo) {
-                const buffer = await this.client.downloadMedia(msg, {});
-                const img = await Jimp.read(buffer);
-                const qr = jsQR(new Uint8ClampedArray(img.bitmap.data), img.bitmap.width, img.bitmap.height);
-                if (qr) {
-                    const hash = this.cleanAndExtract(qr.data);
-                    if (hash) this.claim(hash, "📸 QR Scan");
-                }
+                this.processImage(msg);
             }
 
-            // เข้ากลุ่มอัตโนมัติ
+            // 4. Auto Join Engine
             if (msg.message?.includes("t.me/")) {
                 const links = msg.message.match(/t\.me\/[a-zA-Z0-9_+]+/g);
                 if (links) links.forEach(l => this.autoJoin(l));
@@ -132,68 +224,136 @@ class TitanMasterpiece {
         }, new NewMessage({ incoming: true }));
     }
 
-    startWebServer() {
+    runWebServer() {
         app.get("/", (req, res) => {
+            const sysInfo = {
+                uptime: Math.floor((new Date() - STATE.STATS.startTime) / 1000),
+                ram: (process.memoryUsage().heapUsed / 1024 / 1024).toFixed(2),
+                cpu: os.loadavg()[0].toFixed(2)
+            };
+
             res.send(`
-            <!DOCTYPE html><html><head><meta charset="UTF-8"><title>Titan Masterpiece Dashboard</title>
-            <link href="https://fonts.googleapis.com/css2?family=Kanit:wght@300;500&display=swap" rel="stylesheet">
-            <style>
-                body { background: #0d1117; color: #c9d1d9; font-family: 'Kanit', sans-serif; margin: 0; padding: 20px; }
-                .container { max-width: 1200px; margin: auto; }
-                .grid { display: grid; grid-template-columns: 1fr 1fr; gap: 20px; }
-                .card { background: #161b22; border: 1px solid #30363d; border-radius: 15px; padding: 20px; margin-bottom: 20px; }
-                .stat-value { font-size: 3em; color: #39d353; font-weight: bold; }
-                .btn { padding: 10px 15px; border-radius: 8px; border: none; cursor: pointer; font-weight: bold; color: white; transition: 0.3s; }
-                .btn-add { background: #238636; } .btn-del { background: #da3633; padding: 5px 10px; }
-                input { background: #0d1117; border: 1px solid #30363d; color: white; padding: 10px; border-radius: 8px; width: 60%; }
-                table { width: 100%; border-collapse: collapse; margin-top: 15px; }
-                th { text-align: left; color: #8b949e; border-bottom: 1px solid #30363d; padding: 10px; }
-                td { padding: 12px; border-bottom: 1px solid #21262d; font-size: 0.9em; }
-                .room-list { max-height: 200px; overflow-y: auto; font-size: 0.8em; }
-            </style></head>
-            <body><div class="container">
-                <h1 style="color:#58a6ff">💎 TITAN MASTERPIECE V50.0</h1>
-                <div class="grid">
-                    <div>
-                        <div class="card"><h3>📊 ยอดรวมวันนี้</h3><div class="stat-value">฿${this.stats.total.toFixed(2)}</div><p>สำเร็จทั้งหมด ${this.stats.count} ครั้ง</p></div>
-                        <div class="card"><h3>📱 จัดการเบอร์ Wallet (เบอร์แรกจะถูกใช้รับเงิน)</h3>
-                            <div style="margin-bottom:15px;">
-                                <input id="newPhone" placeholder="09xxxxxxx"> <button class="btn btn-add" onclick="control('add')">เพิ่มเบอร์</button>
-                            </div>
-                            ${CONFIG.WALLET_PHONES.map(p => `
-                                <div style="display:flex; justify-content:space-between; padding:8px; border-bottom:1px solid #222;">
-                                    <span>📱 ${p}</span> <button class="btn btn-del" onclick="control('del','${p}')">ลบ</button>
-                                </div>`).join('')}
-                        </div>
-                    </div>
-                    <div>
-                        <div class="card"><h3>📡 ห้องที่กำลัง Monitor (${this.monitoredRooms.size})</h3>
-                            <div class="room-list">${Array.from(this.monitoredRooms.values()).map(r => `<div>🟢 ${r}</div>`).join('')}</div>
-                        </div>
-                        <div class="card"><h3>🔗 ประวัติ Auto Join</h3>
-                            <div class="room-list">${this.joinHistory.map(j => `<div>[${j.time}] ${j.target} - <b>${j.status}</b></div>`).join('')}</div>
-                        </div>
-                    </div>
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>TITAN GOD MODE V60</title>
+    <link href="https://fonts.googleapis.com/css2?family=JetBrains+Mono:wght@400;700&family=Kanit:wght@300;500&display=swap" rel="stylesheet">
+    <style>
+        :root { --bg: #08090a; --card: #111418; --primary: #00ff88; --danger: #ff4444; --text: #e0e0e0; }
+        body { background: var(--bg); color: var(--text); font-family: 'Kanit', sans-serif; margin: 0; display: flex; flex-direction: column; height: 100vh; overflow: hidden; }
+        header { padding: 15px 30px; background: var(--card); border-bottom: 2px solid #222; display: flex; justify-content: space-between; align-items: center; }
+        .main-content { display: grid; grid-template-columns: 350px 1fr 300px; gap: 15px; padding: 15px; flex: 1; overflow: hidden; }
+        .panel { background: var(--card); border-radius: 12px; border: 1px solid #222; display: flex; flex-direction: column; overflow: hidden; }
+        .panel-header { padding: 12px; background: #1a1f26; font-weight: bold; border-bottom: 1px solid #222; color: var(--primary); font-size: 0.9em; }
+        .scroll { flex: 1; overflow-y: auto; padding: 10px; }
+        
+        .stat-card { background: #1a1f26; padding: 15px; border-radius: 8px; margin-bottom: 10px; border-left: 4px solid var(--primary); }
+        .stat-val { font-size: 2em; font-weight: bold; color: var(--primary); }
+        
+        .log-item { font-family: 'JetBrains Mono', monospace; font-size: 0.75em; margin-bottom: 5px; padding: 5px; border-bottom: 1px solid #222; }
+        .type-System { color: #3498db; } .type-Claim { color: var(--primary); } .type-Error { color: var(--danger); }
+        
+        .btn { padding: 8px 12px; border-radius: 6px; border: none; cursor: pointer; font-weight: bold; font-family: 'Kanit'; }
+        .btn-add { background: var(--primary); color: #000; } .btn-del { background: var(--danger); color: #fff; font-size: 0.7em; }
+        input { background: #000; border: 1px solid #333; color: #fff; padding: 10px; border-radius: 6px; width: calc(100% - 25px); margin-bottom: 10px; }
+        
+        table { width: 100%; border-collapse: collapse; font-size: 0.8em; }
+        th { text-align: left; padding: 8px; color: #666; }
+        td { padding: 8px; border-bottom: 1px solid #222; }
+        .status-SUCCESS { color: var(--primary); font-weight: bold; }
+        .status-Error { color: var(--danger); }
+        
+        ::-webkit-scrollbar { width: 5px; } ::-webkit-scrollbar-thumb { background: #333; }
+    </style>
+</head>
+<body>
+    <header>
+        <div style="font-size: 1.5em; font-weight: bold;">⚡ TITAN <span style="color: var(--primary);">V60.0 GOD MODE</span></div>
+        <div style="font-size: 0.9em; color: #888;">UPTIME: ${sysInfo.uptime}s | RAM: ${sysInfo.ram}MB | CPU: ${sysInfo.cpu}%</div>
+    </header>
+
+    <div class="main-content">
+        <div class="panel">
+            <div class="panel-header">WALLET & CONTROLS</div>
+            <div class="scroll">
+                <div class="stat-card"><div class="stat-val">฿${STATE.STATS.totalEarned.toFixed(2)}</div><div>TOTAL EARNED</div></div>
+                <div style="display: grid; grid-template-columns: 1fr 1fr; gap: 10px; margin-bottom: 15px;">
+                    <div class="stat-card" style="border-color: #3498db;"><div style="font-size: 1.2em;">${STATE.STATS.successCount}</div><small>SUCCESS</small></div>
+                    <div class="stat-card" style="border-color: var(--danger);"><div style="font-size: 1.2em;">${STATE.STATS.failCount}</div><small>FAILED</small></div>
                 </div>
-                <div class="card"><h3>📜 ประวัติการรับเงินล่าสุด</h3>
-                    <table><thead><tr><th>เวลา</th><th>สถานะ</th><th>จำนวน</th><th>แหล่งที่มา</th><th>รหัส</th></tr></thead>
-                    <tbody>${this.voucherHistory.map(v => `<tr><td>${v.time}</td><td>${v.status}</td><td style="color:#39d353">฿${v.amount}</td><td>${v.source}</td><td><code>${v.hash}</code></td></tr>`).join('')}</tbody></table>
+                
+                <h3>📱 WALLET PHONES</h3>
+                <input type="text" id="phoneInput" placeholder="09xxxxxxx">
+                <button class="btn btn-add" style="width: 100%;" onclick="manage('add')">ADD NEW WALLET</button>
+                <div style="margin-top: 15px;">
+                    ${STATE.CONFIG.WALLET_PHONES.map(p => `
+                        <div style="display: flex; justify-content: space-between; align-items: center; background: #1a1f26; padding: 8px; margin-bottom: 5px; border-radius: 5px;">
+                            <span>${p}</span> <button class="btn btn-del" onclick="manage('del','${p}')">REMOVE</button>
+                        </div>
+                    `).join('')}
                 </div>
             </div>
-            <script>
-                function control(action, phone) {
-                    const p = phone || document.getElementById('newPhone').value;
-                    if(!p && action === 'add') return;
-                    fetch('/manage?action=' + action + '&phone=' + p).then(() => location.reload());
-                }
-            </script></body></html>
+        </div>
+
+        <div class="panel">
+            <div class="panel-header">REAL-TIME VOUCHER CAPTURE</div>
+            <div class="scroll">
+                <table>
+                    <thead><tr><th>TIME</th><th>STATUS</th><th>BAHT</th><th>SOURCE</th><th>CODE</th></tr></thead>
+                    <tbody>
+                        ${STATE.MONITOR.vouchers.map(v => `
+                            <tr>
+                                <td>${v.time}</td>
+                                <td class="status-${v.status.includes('SUCCESS')?'SUCCESS':'Error'}">${v.status}</td>
+                                <td>${v.amount}</td>
+                                <td style="color: #888;">${v.room.substring(0,10)}</td>
+                                <td style="font-family: monospace; font-size: 0.8em; color: var(--primary);">${v.hash.substring(0,6)}...${v.hash.substring(28)}</td>
+                            </tr>
+                        `).join('')}
+                    </tbody>
+                </table>
+            </div>
+        </div>
+
+        <div class="panel">
+            <div class="panel-header">LIVE SYSTEM CONSOLE</div>
+            <div class="scroll" style="background: #000;">
+                ${STATE.STATS.logs.map(l => `
+                    <div class="log-item">
+                        <span style="color: #555;">[${l.time}]</span> 
+                        <span class="type-${l.type}">[${l.type}]</span> ${l.msg}
+                    </div>
+                `).join('')}
+            </div>
+        </div>
+    </div>
+
+    <script>
+        function manage(act, p) {
+            const phone = p || document.getElementById('phoneInput').value;
+            if(!phone && act === 'add') return;
+            fetch('/manage?act=' + act + '&p=' + phone).then(() => location.reload());
+        }
+        // Auto refresh every 5 seconds for live data
+        setTimeout(() => location.reload(), 5000);
+    </script>
+</body>
+</html>
             `);
         });
 
         app.get("/manage", (req, res) => {
-            const { action, phone } = req.query;
-            if (action === "add" && phone) CONFIG.WALLET_PHONES.unshift(phone);
-            if (action === "del" && phone) CONFIG.WALLET_PHONES = CONFIG.WALLET_PHONES.filter(p => p !== phone);
+            const { act, p } = req.query;
+            if (act === "add" && p) {
+                STATE.CONFIG.WALLET_PHONES.unshift(p);
+                this.addLog("Config", `Added Phone: ${p}`);
+            }
+            if (act === "del" && p) {
+                STATE.CONFIG.WALLET_PHONES = STATE.CONFIG.WALLET_PHONES.filter(x => x !== p);
+                this.addLog("Config", `Removed Phone: ${p}`);
+            }
             res.send("ok");
         });
 
@@ -201,4 +361,6 @@ class TitanMasterpiece {
     }
 }
 
-new TitanMasterpiece().start();
+// Start The Engine
+const titan = new TitanGodMode();
+titan.init().catch(e => console.error("FATAL ERROR:", e));
