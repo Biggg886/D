@@ -12,7 +12,7 @@ const Jimp = JimpModule.default || JimpModule;
 // ========== [ CONFIG ] ==========
 const API_ID = 16274927; 
 const API_HASH = "e1b49b1565a299c2e442626d598718e8";
-const SESSION_STRING = ""; // ก๊อปปี้รหัสยาวๆ มาใส่ตรงนี้เพื่อให้รันไม่ต้องขอ OTP
+const SESSION_STRING = "1BQANOTEuMTA4LjU2LjE2NgG7syfVfIDQQZn5AYSCH7TCyTcS+3IlGqeYh87iks3MfrERGB/6QtknmID9hp67Hzu+JXLJoF3RgLYP7oWjqEdPxXucRkxnCiD5sWMmc1jhfoZ8aTe+Iitub57/+zfE4q+SVuZ4IpMNOcCcmZZE5B1fTpTo+0s/JrgqpUv4l54CkSv2f+Rucwq69Ib1P/IOhqRtR2lkbm/w6dv8twfIb9M1G+BdtzUYT1RV+kgS6NMfhb75HsrWv5+sPqJUI2AndD5lK+jWTbU+xs9n8aIB+iTE7BssedfERwsqfzG2AilzdmG0KXCDyFmjqPSzGqy8l7Eyc71XKZb9a+lSaZ772fP0Yw=="; // ก๊อปปี้รหัสยาวๆ มาใส่ตรงนี้เพื่อให้รันไม่ต้องขอ OTP
 
 let WALLET_PHONES = ["0951417365"]; 
 const MY_CHAT_ID = "-1003647725597"; 
