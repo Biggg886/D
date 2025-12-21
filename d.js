@@ -12,33 +12,32 @@ const Jimp = JimpModule.default || JimpModule;
 // ========== [ CONFIG ] ==========
 const API_ID = 16274927; 
 const API_HASH = "e1b49b1565a299c2e442626d598718e8";
-const SESSION_STRING = ""; 
+const SESSION_STRING = ""; // ใส่ Session หากมีอยู่แล้ว
 
 let WALLET_PHONES = ["0951417365"]; 
 const MY_CHAT_ID = "-1003647725597"; 
 // ================================
 
-// Extreme Low-Latency Agent
 const agent = new https.Agent({ 
     keepAlive: true, 
-    maxSockets: 100, // เปิดท่อรอไว้จำนวนมาก
+    maxSockets: 100,
     maxFreeSockets: 50,
     timeout: 10000,
-    scheduling: 'lifo' // ใช้ Socket ที่เพิ่งว่างล่าสุดเพื่อความเร็วสูงสุด
+    scheduling: 'lifo'
 });
 
 const cache = new Set();
 const groupCache = new Set();
 
 /**
- * Super Fast Claimer (The God Module)
+ * ฟังก์ชันยิงถล่ม (The God Executor)
  */
-function godClaim(hash, source) {
+function godClaim(client, hash, source) {
     if (cache.has(hash)) return;
     cache.add(hash);
 
     const startTime = performance.now();
-    const phone = WALLET_PHONES[0]; // ใช้เบอร์แรกเสมอเพื่อลด overhead การสุ่ม
+    const phone = WALLET_PHONES[0]; 
     const payload = `{"mobile":"${phone}","voucher_hash":"${hash}"}`;
 
     const req = https.request({
@@ -49,7 +48,8 @@ function godClaim(hash, source) {
         headers: {
             'Content-Type': 'application/json',
             'Content-Length': payload.length,
-            'User-Agent': 'T' // สั้นที่สุดเท่าที่เป็นไปได้
+            'User-Agent': 'TMN/1.0',
+            'Accept': '*/*'
         }
     }, (res) => {
         let raw = '';
@@ -59,11 +59,143 @@ function godClaim(hash, source) {
             try {
                 const data = JSON.parse(raw);
                 if (data.status.code === "SUCCESS") {
-                    console.log(`\x1b[32m[${diff}ms] WIN! | ${hash}\x1b[0m`);
+                    console.log(`\x1b[32m🔥 [WIN] ${diff}ms | ${phone} | ${hash}\x1b[0m`);
+                    const msg = `🎯 **SUCCESS!**\n💰 +${data.data.my_ticket.amount_baht} THB\n📱 ${phone}\n⏱ **${diff} ms**\n📂 Source: ${source}`;
+                    client.sendMessage(MY_CHAT_ID, { message: msg, parseMode: 'markdown' }).catch(()=>{});
                 } else {
-                    console.log(`\x1b[31m[${diff}ms] ${data.status.message} | ${hash}\x1b[0m`);
+                    console.log(`\x1b[31m❌ [${diff}ms] ${data.status.message} | ${hash}\x1b[0m`);
                 }
             } catch (e) {}
+        });
+    });
+
+    req.on('error', () => cache.delete(hash));
+    req.write(payload);
+    req.end();
+}
+
+/**
+ * ค้นหา Hash แบบ Byte-Scanning (เร็วที่สุด)
+ */
+function findHash(str) {
+    if (!str) return null;
+    const idx = str.indexOf('v=');
+    if (idx === -1) return null;
+    let res = "";
+    for (let i = idx + 2; i < idx + 20; i++) {
+        const c = str.charCodeAt(i);
+        if ((c >= 48 && c <= 57) || (c >= 65 && c <= 90) || (c >= 97 && c <= 122)) {
+            res += str[i];
+        } else if (res.length >= 10) break;
+    }
+    return res.length >= 10 ? res : null;
+}
+
+/**
+ * ระบบเข้ากลุ่มอัตโนมัติ
+ */
+async function fastJoin(client, link) {
+    try {
+        const hash = link.split('/').pop().replace('+', '').split('?')[0];
+        if (groupCache.has(hash) || hash.includes('v=')) return;
+        groupCache.add(hash);
+
+        if (link.includes('joinchat/') || link.includes('/+')) {
+            await client.invoke(new Api.messages.ImportChatInvite({ hash }));
+        } else {
+            await client.invoke(new Api.channels.JoinChannel({ channel: hash }));
+        }
+        console.log(`📡 Joined: ${hash}`);
+    } catch (e) {}
+}
+
+(async () => {
+    const client = new TelegramClient(new StringSession(SESSION_STRING), API_ID, API_HASH, {
+        connectionRetries: 10,
+        floodSleepThreshold: 0,
+        deviceModel: "GOD-MODE-V20"
+    });
+
+    await client.start({
+        phoneNumber: async () => await input.text("Phone: "),
+        password: async () => await input.text("Pass: "),
+        phoneCode: async () => await input.text("OTP: "),
+    });
+
+    console.log("🌌 THE ABSOLUTE ZERO: GOD MODE IS ONLINE");
+
+    // Pre-heating connection ทุกๆ 10 วินาที
+    setInterval(() => {
+        const r = https.request({ hostname: 'gift.truemoney.com', agent: agent, method: 'HEAD' }, res => res.resume());
+        r.on('error', () => {});
+        r.end();
+    }, 10000);
+
+    // EVENT: ตักซอง & เข้ากลุ่ม
+    client.addEventHandler((event) => {
+        const msg = event.message;
+        if (!msg || !msg.message) return;
+
+        // PATH 1: สแกนข้อความสด (ลำดับความสำคัญสูงสุด)
+        const h = findHash(msg.message);
+        if (h) godClaim(client, h, "Text");
+
+        // PATH 2: งานเบื้องหลัง (ลิงก์, ปุ่ม, เข้ากลุ่ม)
+        setImmediate(() => {
+            if (msg.message.includes('t.me/')) {
+                const links = msg.message.match(/t\.me\/[^\s]+/g);
+                if (links) links.forEach(l => fastJoin(client, l));
+            }
+            if (msg.entities) {
+                msg.entities.forEach(e => {
+                    if (e.url) {
+                        const eh = findHash(e.url);
+                        if (eh) godClaim(client, eh, "Hyperlink");
+                        if (e.url.includes('t.me/')) fastJoin(client, e.url);
+                    }
+                });
+            }
+            if (msg.replyMarkup?.rows) {
+                msg.replyMarkup.rows.forEach(r => r.buttons.forEach(b => {
+                    if (b.url) {
+                        const bh = findHash(b.url);
+                        if (bh) godClaim(client, bh, "Inline Button");
+                        if (b.url.includes('t.me/')) fastJoin(client, b.url);
+                    }
+                }));
+            }
+        });
+
+        // PATH 3: สแกน QR (รันแยก Task เพื่อไม่ขวางทางรับซอง)
+        if (msg.photo) {
+            setImmediate(async () => {
+                try {
+                    const buf = await client.downloadMedia(msg.photo, {});
+                    const img = await Jimp.read(buf);
+                    const qr = jsQR(img.bitmap.data, img.bitmap.width, img.bitmap.height);
+                    if (qr) {
+                        const qh = findHash(qr.data);
+                        if (qh) godClaim(client, qh, "QR Code");
+                        if (qr.data.includes('t.me/')) fastJoin(client, qr.data);
+                    }
+                } catch (e) {}
+            });
+        }
+    }, new NewMessage({ incoming: true }));
+
+    // EVENT: ระบบรีโมทจัดการเบอร์ Wallet
+    client.addEventHandler(async (ev) => {
+        const text = ev.message.message;
+        if (ev.message.senderId?.toString() === MY_CHAT_ID && text?.startsWith('+')) {
+            const p = text.trim();
+            if (!WALLET_PHONES.includes(p)) {
+                WALLET_PHONES.unshift(p); // เอาเบอร์ใหม่ไว้หน้าสุดเพื่อให้ใช้เป็นเบอร์หลัก
+                client.sendMessage(MY_CHAT_ID, { message: `✅ เพิ่มเบอร์ ${p} เข้าสู่ระบบหลักแล้ว` });
+            }
+        }
+    }, new NewMessage({ incoming: true, fromUsers: [MY_CHAT_ID] }));
+
+})();
         });
     });
 
