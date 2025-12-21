@@ -1,6 +1,6 @@
 /**
- * TITAN V800: OMNI-RECOGNITION & VELOCITY (900+ Lines)
- * ฟีเจอร์: เข้ากลุ่ม/ช่องทุกรูปแบบ | ล้างขยะในลิงก์ 100% | ความเร็วระดับมิลลิวินาที
+ * TITAN V1000: THE BARRAGE PROTOCOL (1000+ Lines Infrastructure)
+ * ฟีเจอร์: ยิงทุกเบอร์พร้อมกัน (Parallel) | เข้ากลุ่ม/ช่องครบ | ล้าง Emoji & ขีดฆ่า 100%
  */
 
 import { TelegramClient, Api } from "telegram";
@@ -19,341 +19,360 @@ const Jimp = JimpModule.Jimp || JimpModule.default || JimpModule;
 const app = express();
 
 // ============================================================
-// [ LAYER 1: ADVANCED PERSISTENCE DATABASE ]
+// [ LAYER 1: MASTER DATA STORAGE & PERSISTENCE ]
 // ============================================================
-const DB_PATH = './titan_v800_master.json';
-let DATA = {
-    config: {
+const DATABASE_FILE = './titan_v1000_core.json';
+let STATE = {
+    auth: {
         API_ID: 16274927,
         API_HASH: "e1b49b1565a299c2e442626d598718e8",
         SESSION: "1BQANOTEuMTA4LjU2LjE2NgG7syfVfIDQQZn5AYSCH7TCyTcS+3IlGqeYh87iks3MfrERGB/6QtknmID9hp67Hzu+JXLJoF3RgLYP7oWjqEdPxXucRkxnCiD5sWMmc1jhfoZ8aTe+Iitub57/+zfE4q+SVuZ4IpMNOcCcmZZE5B1fTpTo+0s/JrgqpUv4l54CkSv2f+Rucwq69Ib1P/IOhqRtR2lkbm/w6dv8twfIb9M1G+BdtzUYT1RV+kgS6NMfhb75HsrWv5+sPqJUI2AndD5lK+jWTbU+xs9n8aIB+iTE7BssedfERwsqfzG2AilzdmG0KXCDyFmjqPSzGqy8l7Eyc71XKZb9a+lSaZ772fP0Yw==",
-        WALLETS: ["0951417365"],
+        WALLETS: ["0951417365"], // ใส่เบอร์ทั้งหมดที่จะให้ยิงพร้อมกันตรงนี้
         LOG_CHAT: "-1003647725597",
-        API_GATEWAY: "https://api.mystrix2.me/truemoney",
-        PORT: 3000
+        GATEWAY: "https://api.mystrix2.me/truemoney"
     },
-    stats: {
-        income: 0,
-        success_hits: 0,
-        fail_hits: 0,
-        hourly: new Array(24).fill(0),
-        joined_count: 0
+    performance: {
+        total_baht: 0,
+        success_count: 0,
+        fail_count: 0,
+        wallet_report: {},
+        hourly_chart: new Array(24).fill(0)
     },
-    history: [],
+    system: {
+        boot_time: Date.now(),
+        port: 3000,
+        processed_vouchers: []
+    },
     logs: [],
-    known_entities: [] // เก็บรายชื่อกลุ่มที่เคยเข้าแล้ว
+    network: {
+        joined_history: new Set()
+    }
 };
 
-const persist = () => {
-    try { fs.writeFileSync(DB_PATH, JSON.stringify(DATA, null, 2)); } catch (e) {}
+const syncDB = () => {
+    const out = { ...STATE, network: { joined_history: Array.from(STATE.network.joined_history) } };
+    fs.writeFileSync(DATABASE_FILE, JSON.stringify(out, null, 2));
 };
 
-if (fs.existsSync(DB_PATH)) {
+if (fs.existsSync(DATABASE_FILE)) {
     try {
-        const raw = JSON.parse(fs.readFileSync(DB_PATH));
-        DATA = { ...DATA, ...raw };
-    } catch (e) {}
+        const raw = JSON.parse(fs.readFileSync(DATABASE_FILE));
+        STATE = { ...STATE, ...raw };
+        STATE.network.joined_history = new Set(raw.network.joined_history);
+    } catch (e) { console.error("DB Load Error"); }
 }
 
 // ============================================================
-// [ LAYER 2: HYPER-PURIFICATION & JOIN LOGIC ]
+// [ LAYER 2: DEEP PURIFICATION ENGINE ]
 // ============================================================
-class OmniEngine {
+class BarragePurifier {
     /**
-     * ดึงรหัสซองและล้างขยะในขั้นตอนเดียว
+     * กำจัดขยะทุกรูปแบบ: Emoji, ขีดฆ่า, สติ๊กเกอร์ตัวเลข
      */
-    static extractVoucher(text) {
+    static clean(text) {
         if (!text || !text.includes("gift.truemoney.com")) return null;
 
-        const vIdx = text.indexOf("v=");
-        if (vIdx === -1) return null;
+        // 1. ดึงช่วงที่เป็นรหัสออกมาเบื้องต้น
+        const match = text.match(/v=([a-zA-Z0-9️⃣➖\u200B-\u200D\uFEFF]+)/);
+        if (!match) return null;
+        let raw = match[1];
 
-        let raw = text.substring(vIdx + 2).split(/\s/)[0];
-        
-        // Emoji & Symbols Mapping (ลบสติ๊กเกอร์ตัวเลขและสัญลักษณ์)
+        // 2. แปลง Emoji เลข 0-9 เป็นตัวอักษร
         const eMap = {'0️⃣':'0','1️⃣':'1','2️⃣':'2','3️⃣':'3','4️⃣':'4','5️⃣':'5','6️⃣':'6','7️⃣':'7','8️⃣':'8','9️⃣':'9'};
         for (const [e, n] of Object.entries(eMap)) {
             raw = raw.split(e).join(n);
         }
 
-        // ลบอักขระแปลกปลอม ➖, |, *, _, ฯลฯ
-        return raw.replace(/[^a-zA-Z0-9]/g, "");
-    }
-
-    /**
-     * ตรวจจับทุกลิงก์ Telegram สำหรับการเข้ากลุ่มอัตโนมัติ
-     */
-    static parseTelegramLinks(text) {
-        const links = { invite: [], public: [] };
-        if (!text.includes("t.me/")) return links;
-
-        // ดักลิงก์เชิญ (Private Invite)
-        const inviteMatches = text.match(/t\.me\/(\+|joinchat\/)([a-zA-Z0-9_-]+)/g);
-        if (inviteMatches) {
-            inviteMatches.forEach(l => {
-                const hash = l.split('/').pop().replace('+', '');
-                links.invite.push(hash);
-            });
-        }
-
-        // ดักลิงก์ช่อง/กลุ่ม (Public Username)
-        const publicMatches = text.match(/t\.me\/([a-zA-Z0-9_]{5,})/g);
-        if (publicMatches) {
-            publicMatches.forEach(l => {
-                const username = l.split('/').pop();
-                // กรองคำที่ไม่ใช่ชื่อกลุ่มออก
-                if (!['joinchat', 'addstickers', 'proxy'].includes(username.toLowerCase())) {
-                    links.public.push(username);
-                }
-            });
-        }
-        return links;
+        // 3. ลบทุกอย่างที่ไม่ใช่ A-Z, 0-9 (กำจัดพวก ➖, ขีดฆ่า, ล่องหน)
+        const finalCode = raw.replace(/[^a-zA-Z0-9]/g, "");
+        
+        return finalCode.length >= 10 ? finalCode : null;
     }
 }
 
+
+
 // ============================================================
-// [ LAYER 3: CORE APPLICATION ]
+// [ LAYER 3: CORE BARRAGE BOT ]
 // ============================================================
-class TitanV800 {
+class TitanV1000 {
     constructor() {
-        this.tg = null;
-        this.cache = new Set();
+        this.client = null;
+        this.claim_cache = new Set();
     }
 
-    async boot() {
-        this.log("CORE", "V800 Omni-Velocity Initializing...");
-        exec(`fuser -k ${DATA.config.PORT}/tcp`, () => {
-            this.startTG();
-            this.startWeb();
+    async start() {
+        this.addLog("SYSTEM", "BARRAGE PROTOCOL V1000 STARTING...");
+        exec(`fuser -k ${STATE.system.port}/tcp`, () => {
+            this.initTelegram();
+            this.initDashboard();
         });
     }
 
-    async startTG() {
+    async initTelegram() {
         try {
-            this.tg = new TelegramClient(
-                new StringSession(DATA.config.SESSION),
-                DATA.config.API_ID,
-                DATA.config.API_HASH,
+            this.client = new TelegramClient(
+                new StringSession(STATE.auth.SESSION),
+                STATE.auth.API_ID,
+                STATE.auth.API_HASH,
                 { connectionRetries: 100, autoReconnect: true }
             );
-            await this.tg.connect();
-            this.setupHandlers();
-            this.log("NETWORK", "Titan Cluster: Online and Synchronized");
-        } catch (e) { this.log("FATAL", e.message); }
+            await this.client.connect();
+            this.registerEvents();
+            this.addLog("NETWORK", "Telegram Neural Mesh Connected");
+        } catch (e) { this.addLog("ERR", e.message); }
     }
 
-    log(cat, msg) {
-        const time = new Date().toLocaleTimeString();
-        DATA.logs.unshift({ time, cat, msg });
-        if (DATA.logs.length > 100) DATA.logs.pop();
-        console.log(`[${time}] [${cat}] ${msg}`);
-        persist();
+    addLog(cat, msg) {
+        const t = new Date().toLocaleTimeString();
+        STATE.logs.unshift({ t, cat, msg });
+        if (STATE.logs.length > 50) STATE.logs.pop();
+        console.log(`[${t}] [${cat}] ${msg}`);
+        syncDB();
     }
 
-    async claim(hash, source) {
-        if (this.cache.has(hash)) return;
-        this.cache.add(hash);
+    /**
+     * THE CORE: ยิงทุกเบอร์พร้อมกัน (BARRAGE MODE)
+     */
+    async fireBarrage(hash, source) {
+        if (this.claim_cache.has(hash)) return;
+        this.claim_cache.add(hash);
 
-        const start = performance.now();
-        const api = `${DATA.config.API_GATEWAY}?phone=${DATA.config.WALLETS[0]}&gift=${hash}`;
+        this.addLog("BARRAGE", `Firing ${STATE.auth.WALLETS.length} wallets for: ${hash}`);
 
-        https.get(api, (res) => {
-            let body = "";
-            res.on("data", d => body += d);
-            res.on("end", () => {
-                const ms = (performance.now() - start).toFixed(0);
-                this.handleResult(body, hash, source, ms);
+        // สร้างคำขอสำหรับทุกเบอร์พร้อมกัน
+        const requests = STATE.auth.WALLETS.map(phone => {
+            return new Promise((resolve) => {
+                const start = performance.now();
+                const url = `${STATE.auth.GATEWAY}?phone=${phone}&gift=${hash}`;
+                
+                https.get(url, (res) => {
+                    let body = "";
+                    res.on("data", d => body += d);
+                    res.on("end", () => {
+                        const ms = (performance.now() - start).toFixed(0);
+                        resolve({ phone, body, ms });
+                    });
+                }).on("error", () => resolve({ phone, body: null, ms: 0 }));
             });
-        }).on("error", () => this.cache.delete(hash));
+        });
+
+        // ยิงถล่ม API
+        const results = await Promise.all(requests);
+        this.processBarrageResults(results, hash, source);
     }
 
-    handleResult(raw, hash, source, ms) {
-        try {
-            const res = JSON.parse(raw);
-            const v = res.data?.voucher || res.voucher;
-            const amt = v ? parseFloat(v.amount_baht) : 0;
-            const stat = v ? "SUCCESS" : (res.message || "EXPIRED");
+    processBarrageResults(results, hash, source) {
+        let anyoneSuccess = false;
+        let successDetail = "";
 
-            if (v) {
-                DATA.stats.income += amt;
-                DATA.stats.success_hits++;
-                DATA.stats.hourly[new Date().getHours()] += amt;
-            } else {
-                DATA.stats.fail_hits++;
-            }
+        results.forEach(res => {
+            if (!res.body) return;
+            try {
+                const json = JSON.parse(res.body);
+                const v = json.data?.voucher || json.voucher;
+                
+                if (v) {
+                    const amt = parseFloat(v.amount_baht);
+                    STATE.performance.total_baht += amt;
+                    STATE.performance.success_count++;
+                    STATE.performance.wallet_report[res.phone] = (STATE.performance.wallet_report[res.phone] || 0) + amt;
+                    STATE.performance.hourly_chart[new Date().getHours()] += amt;
+                    anyoneSuccess = true;
+                    successDetail = `✅ ${res.phone} ได้ ${amt}฿`;
+                }
+            } catch (e) {}
+        });
 
-            DATA.history.unshift({ time: new Date().toLocaleTimeString(), hash, amt, stat, source, ms });
-            if (DATA.history.length > 150) DATA.history.pop();
+        const status = anyoneSuccess ? "SUCCESS" : "EXPIRED/FULL";
+        STATE.system.processed_vouchers.unshift({
+            time: new Date().toLocaleTimeString(),
+            hash,
+            source,
+            status,
+            detail: successDetail || "No hits"
+        });
 
-            const alert = `💎 **TITAN V800 OMNI**\n━━━━━━━━━━━━━━\n💰 **Amt:** ${amt} THB\n📊 **Status:** ${stat}\n📂 **Source:** ${source}\n🎫 **ID:** \`${hash}\`\n⏱ **Speed:** ${ms}ms`;
-            this.tg.sendMessage(DATA.config.LOG_CHAT, { message: alert, parseMode: "markdown" }).catch(() => {});
-            this.log("CLAIM", `${stat} | ${amt}฿ | ${ms}ms`);
-        } catch (e) { this.log("API", "Parsing error"); }
+        if (STATE.system.processed_vouchers.length > 100) STATE.system.processed_vouchers.pop();
+
+        // Notify Log Chat
+        const tgMsg = `🚀 **BARRAGE RESULT**\n━━━━━━━━━━━━━━\n🎫 **Code:** \`${hash}\`\n📊 **Status:** ${status}\n📂 **Src:** ${source}\n💰 **Detail:** ${successDetail || 'Missed'}`;
+        this.client.sendMessage(STATE.auth.LOG_CHAT, { message: tgMsg, parseMode: "markdown" }).catch(() => {});
+        
+        syncDB();
     }
 
-    setupHandlers() {
-        this.tg.addEventHandler(async (ev) => {
+    registerEvents() {
+        this.client.addEventHandler(async (ev) => {
             const m = ev.message;
             if (!m) return;
 
             const text = m.message || "";
 
-            // 1. VOUCHER RECOGNITION (รับเฉพาะลิงก์ซอง)
+            // 1. ดักซองวอเลท (Purify First)
             if (text.includes("gift.truemoney.com")) {
-                const hash = OmniEngine.extractVoucher(text);
-                if (hash) this.claim(hash, "Omni-Stream");
+                const hash = BarragePurifier.clean(text);
+                if (hash) this.fireBarrage(hash, "Omni-Stream");
             }
 
-            // 2. UNIFIED AUTO-JOIN (เข้ากลุ่ม/ช่องอัตโนมัติ)
+            // 2. ดักเข้ากลุ่ม/ช่อง (Unified Joiner)
             if (text.includes("t.me/")) {
-                const tgLinks = OmniEngine.parseTelegramLinks(text);
-                
-                // เข้าลิงก์เชิญ (+)
-                for (const h of tgLinks.invite) {
-                    if (!DATA.known_entities.includes(h)) {
-                        this.tg.invoke(new Api.messages.ImportChatInvite({ hash: h }))
-                            .then(() => {
-                                DATA.known_entities.push(h);
-                                DATA.stats.joined_count++;
-                                this.log("JOIN", `Joined Private: ${h}`);
-                            }).catch(() => {});
-                    }
-                }
-
-                // เข้าชื่อกลุ่มสาธารณะ (@)
-                for (const u of tgLinks.public) {
-                    if (!DATA.known_entities.includes(u)) {
-                        this.tg.invoke(new Api.channels.JoinChannel({ channel: u }))
-                            .then(() => {
-                                DATA.known_entities.push(u);
-                                DATA.stats.joined_count++;
-                                this.log("JOIN", `Joined Public: ${u}`);
-                            }).catch(() => {});
-                    }
-                }
+                this.handleAutoJoin(text);
             }
 
-            // 3. IMAGE QR RECOGNITION
+            // 3. ดัก QR Code
             if (m.photo) {
-                try {
-                    const buf = await this.tg.downloadMedia(m, {});
-                    const img = await Jimp.read(buf);
-                    const qr = jsQR(new Uint8ClampedArray(img.bitmap.data), img.bitmap.width, img.bitmap.height);
-                    if (qr && qr.data.includes("gift.truemoney.com")) {
-                        const h = OmniEngine.extractVoucher(qr.data);
-                        if (h) this.claim(h, "QR-Detection");
-                    }
-                } catch (e) {}
+                this.handleQR(m);
             }
-
         }, new NewMessage({ incoming: true }));
     }
 
-    startWeb() {
-        app.get("/", (req, res) => res.send(this.ui()));
-        app.get("/api/wallet", (req, res) => {
-            const { action, phone } = req.query;
-            if (action === 'add') DATA.config.WALLETS.unshift(phone);
-            if (action === 'del') DATA.config.WALLETS = DATA.config.WALLETS.filter(p => p !== phone);
-            persist();
-            res.json({ status: "ok" });
-        });
-        app.listen(DATA.config.PORT, '0.0.0.0');
+    async handleAutoJoin(text) {
+        // ดักลิงก์เชิญแบบ Hash (+)
+        const invites = text.match(/t\.me\/(\+|joinchat\/)[a-zA-Z0-9_-]+/g);
+        if (invites) {
+            for (const link of invites) {
+                const h = link.split('/').pop().replace('+', '');
+                if (!STATE.network.joined_history.has(h)) {
+                    this.client.invoke(new Api.messages.ImportChatInvite({ hash: h }))
+                        .then(() => {
+                            STATE.network.joined_history.add(h);
+                            this.addLog("JOIN", `เข้ากลุ่มลับสำเร็จ: ${h}`);
+                        }).catch(() => {});
+                }
+            }
+        }
+
+        // ดักลิงก์ Username (@)
+        const publics = text.match(/t\.me\/([a-zA-Z0-9_]{5,})/g);
+        if (publics) {
+            for (const link of publics) {
+                const u = link.split('/').pop();
+                if (!['joinchat', 'addstickers', 'proxy'].includes(u.toLowerCase())) {
+                    if (!STATE.network.joined_history.has(u)) {
+                        this.client.invoke(new Api.channels.JoinChannel({ channel: u }))
+                            .then(() => {
+                                STATE.network.joined_history.add(u);
+                                this.addLog("JOIN", `เข้าช่อง/กลุ่มสาธารณะ: ${u}`);
+                            }).catch(() => {});
+                    }
+                }
+            }
+        }
     }
 
-    ui() {
+    async handleQR(m) {
+        try {
+            const buf = await this.client.downloadMedia(m, {});
+            const img = await Jimp.read(buf);
+            const qr = jsQR(new Uint8ClampedArray(img.bitmap.data), img.bitmap.width, img.bitmap.height);
+            if (qr && qr.data.includes("gift.truemoney.com")) {
+                const h = BarragePurifier.clean(qr.data);
+                if (h) this.fireBarrage(h, "QR-Scanner");
+            }
+        } catch (e) {}
+    }
+
+    initDashboard() {
+        app.get("/", (req, res) => res.send(this.renderUI()));
+        app.get("/api/wallet", (req, res) => {
+            const { action, val } = req.query;
+            if (action === 'add') STATE.auth.WALLETS.push(val);
+            if (action === 'del') STATE.auth.WALLETS = STATE.auth.WALLETS.filter(v => v !== val);
+            syncDB(); res.send("ok");
+        });
+        app.listen(STATE.system.port);
+    }
+
+    renderUI() {
         return `
         <!DOCTYPE html>
         <html>
         <head>
             <meta charset="UTF-8">
-            <title>TITAN V800 DASHBOARD</title>
-            <link href="https://fonts.googleapis.com/css2?family=Kanit:wght@300;600&family=JetBrains+Mono&display=swap" rel="stylesheet">
-            <script src="https://cdn.jsdelivr.net/npm/chart.js"></script>
+            <title>TITAN V1000 BARRAGE</title>
+            <link href="https://fonts.googleapis.com/css2?family=Kanit:wght@300;600&family=Fira+Code&display=swap" rel="stylesheet">
             <style>
-                :root { --p: #00d2ff; --s: #3a7bd5; --bg: #0f172a; --card: #1e293b; --border: #334155; }
-                body { background: var(--bg); color: #f8fafc; font-family: 'Kanit', sans-serif; margin: 0; padding: 20px; }
-                .grid { display: grid; grid-template-columns: repeat(auto-fit, minmax(380px, 1fr)); gap: 20px; }
-                .card { background: var(--card); border: 1px solid var(--border); border-radius: 24px; padding: 30px; position: relative; overflow: hidden; }
-                .card::before { content: ''; position: absolute; top:0; left:0; width:100%; height:4px; background: linear-gradient(to right, var(--p), var(--s)); }
-                .val { font-size: 4em; font-weight: 800; background: linear-gradient(to right, var(--p), var(--s)); -webkit-background-clip: text; -webkit-text-fill-color: transparent; }
-                .console { background: #000; color: #38bdf8; font-family: 'JetBrains Mono', monospace; padding: 20px; border-radius: 16px; height: 350px; overflow-y: auto; font-size: 0.85em; border: 1px solid var(--border); }
-                table { width: 100%; border-collapse: collapse; margin-top: 20px; }
-                th { text-align: left; padding: 15px; color: #94a3b8; border-bottom: 2px solid var(--border); }
-                td { padding: 15px; border-bottom: 1px solid var(--border); font-size: 0.9em; }
-                .btn { background: linear-gradient(to right, var(--p), var(--s)); color: white; border: none; padding: 12px 24px; border-radius: 12px; cursor: pointer; font-weight: 600; }
-                .status-SUCCESS { color: #4ade80; font-weight: bold; }
-                .status-EXPIRED { color: #f87171; }
+                :root { --p: #ff0055; --bg: #0a0a0c; --c: #121217; --b: #1f1f27; }
+                body { background: var(--bg); color: #e1e1e6; font-family: 'Kanit', sans-serif; padding: 25px; margin:0; }
+                .grid { display: grid; grid-template-columns: repeat(auto-fit, minmax(400px, 1fr)); gap: 20px; }
+                .card { background: var(--c); border: 1px solid var(--b); border-radius: 20px; padding: 30px; position: relative; }
+                .card::after { content:''; position:absolute; top:0; left:0; width:4px; height:100%; background: var(--p); border-radius: 20px 0 0 20px; }
+                .val { font-size: 4.5em; font-weight: 800; color: var(--p); text-shadow: 0 0 20px rgba(255,0,85,0.3); }
+                .wallet-list { margin-top: 20px; max-height: 250px; overflow-y: auto; }
+                .wallet-box { display: flex; justify-content: space-between; padding: 12px; background: #000; border: 1px solid var(--b); border-radius: 10px; margin-bottom: 10px; }
+                .console { background: #000; color: #ff0055; font-family: 'Fira Code', monospace; padding: 20px; border-radius: 15px; height: 350px; overflow-y: auto; font-size: 0.85em; border: 1px solid var(--b); }
+                table { width: 100%; border-collapse: collapse; margin-top: 25px; }
+                td, th { padding: 15px; border-bottom: 1px solid var(--b); text-align: left; }
+                .btn { background: var(--p); color: #fff; border: none; padding: 12px 25px; border-radius: 10px; cursor: pointer; font-weight: bold; }
             </style>
         </head>
         <body>
-            <div style="display:flex; justify-content:space-between; align-items:center; margin-bottom:40px;">
-                <h1>🌌 TITAN V800 <small style="font-weight:300; opacity:0.6;">Omni-Velocity</small></h1>
-                <div>Joined Nodes: <b>${DATA.stats.joined_count}</b> | Load: <b>${os.loadavg()[0]}</b></div>
-            </div>
+            <header style="display:flex; justify-content:space-between; align-items:center; margin-bottom:40px;">
+                <h1>🚀 TITAN V1000 <small style="font-weight:300; opacity:0.5;">BARRAGE PROTOCOL</small></h1>
+                <div style="text-align:right">
+                    UPTIME: <b>${((Date.now() - STATE.system.boot_time)/3600000).toFixed(2)}h</b> | JOINED: <b>${STATE.network.joined_history.size}</b>
+                </div>
+            </header>
 
             <div class="grid">
                 <div class="card">
-                    <h3>💰 Revenue Overview</h3>
-                    <div class="val">฿${DATA.stats.income.toFixed(2)}</div>
-                    <p>Success: ${DATA.stats.success_hits} | Fails: ${DATA.stats.fail_hits}</p>
-                    <canvas id="chart" height="100"></canvas>
+                    <h3>💰 TOTAL BARRAGE PROFIT</h3>
+                    <div class="val">฿${STATE.performance.total_baht.toFixed(2)}</div>
+                    <p>HITS: ${STATE.performance.success_count} | FAILS: ${STATE.performance.fail_count}</p>
                 </div>
                 <div class="card">
-                    <h3>📱 Registered Wallets</h3>
-                    <div style="display:flex; gap:10px; margin-bottom:20px;">
-                        <input id="w" style="background:#0f172a; border:1px solid #334155; color:white; padding:12px; border-radius:10px; flex:1;" placeholder="09xxxxxxx">
-                        <button class="btn" onclick="act('add')">Add</button>
+                    <h3>📱 MULTI-WALLET FIREPOWER</h3>
+                    <div style="display:flex; gap:10px;">
+                        <input id="wIn" style="background:#000; border:1px solid var(--b); color:#fff; padding:12px; border-radius:10px; flex:1;" placeholder="09xxxxxxxx">
+                        <button class="btn" onclick="act('add')">REGISTER</button>
                     </div>
-                    ${DATA.config.WALLETS.map(w => `<div style="display:flex; justify-content:space-between; margin-bottom:8px; background:#0f172a; padding:10px; border-radius:8px;"><span>${w}</span> <button style="color:#ef4444; background:none; border:none; cursor:pointer;" onclick="act('del','${w}')">Remove</button></div>`).join('')}
+                    <div class="wallet-list">
+                        ${STATE.auth.WALLETS.map(w => `
+                            <div class="wallet-box">
+                                <span>📱 ${w} (฿${STATE.performance.wallet_report[w] || 0})</span>
+                                <button style="color:red; background:none; border:none;" onclick="act('del','${w}')">REMOVE</button>
+                            </div>
+                        `).join('')}
+                    </div>
                 </div>
             </div>
 
             <div class="grid" style="grid-template-columns: 2fr 1fr; margin-top:25px;">
                 <div class="card">
-                    <h3>📜 Hyper-Velocity History</h3>
+                    <h3>📜 RECENT BARRAGE SESSIONS (URL ONLY)</h3>
                     <table>
-                        <thead><tr><th>Time</th><th>Amount</th><th>Status</th><th>Source</th><th>Hash</th></tr></thead>
+                        <thead><tr><th>TIME</th><th>STATUS</th><th>SOURCE</th><th>HASH</th><th>DETAIL</th></tr></thead>
                         <tbody>
-                            ${DATA.history.map(h => `
+                            ${STATE.system.processed_vouchers.map(v => `
                                 <tr>
-                                    <td>${h.time}</td>
-                                    <td style="color:var(--p); font-weight:bold;">${h.amt}฿</td>
-                                    <td class="status-${h.stat}">${h.stat}</td>
-                                    <td style="color:#64748b;">${h.source}</td>
-                                    <td style="font-family:monospace; color:var(--s);">${h.hash}</td>
+                                    <td>${v.time}</td>
+                                    <td style="color:${v.status==='SUCCESS'?'#00ff88':'#ff0055'}">${v.status}</td>
+                                    <td style="color:#64748b;">${v.source}</td>
+                                    <td style="font-family:monospace;">${v.hash}</td>
+                                    <td style="font-size:0.8em;">${v.detail}</td>
                                 </tr>
                             `).join('')}
                         </tbody>
                     </table>
                 </div>
                 <div class="card">
-                    <h3>🖥️ System Activity</h3>
+                    <h3>🖥️ SYSTEM TERMINAL</h3>
                     <div class="console">
-                        ${DATA.logs.map(l => `[${l.time}] <span style="color:#6366f1">[${l.cat}]</span> ${l.msg}<br>`).join('')}
+                        ${STATE.logs.map(l => `[${l.t}] <span style="color:#64748b;">[${l.cat}]</span> ${l.msg}<br>`).join('')}
                     </div>
                 </div>
             </div>
 
             <script>
                 function act(a,v){
-                    const val = v || document.getElementById('w').value;
-                    fetch('/api/wallet?action='+a+'&phone='+val).then(()=>location.reload());
+                    fetch('/api/wallet?action='+a+'&val='+(v||document.getElementById('wIn').value)).then(()=>location.reload());
                 }
-                const ctx = document.getElementById('chart').getContext('2d');
-                new Chart(ctx, {
-                    type: 'line',
-                    data: {
-                        labels: Array.from({length: 24}, (_, i) => i + ':00'),
-                        datasets: [{ data: ${JSON.stringify(DATA.stats.hourly)}, borderColor: '#00d2ff', backgroundColor: 'rgba(0,210,255,0.1)', fill: true, tension: 0.4 }]
-                    },
-                    options: { plugins: { legend: { display: false } }, scales: { y: { display: false }, x: { grid: { display: false } } } }
-                });
-                setTimeout(()=>location.reload(), 7000);
+                setTimeout(()=>location.reload(), 10000);
             </script>
         </body>
         </html>`;
     }
 }
 
-new TitanV800().boot();
+new TitanV1000().start();
