@@ -2,13 +2,15 @@ import { TelegramClient, Api } from "telegram";
 import { StringSession } from "telegram/sessions/index.js";
 import { NewMessage } from "telegram/events/index.js";
 import https from "https";
-import express from "express"; // เพิ่มระบบเว็บ
+import express from "express";
 import * as JimpModule from "jimp";
 import jsQR from "jsqr";
 import { performance } from "perf_hooks";
 import cron from "node-cron";
 
-const Jimp = JimpModule.default || JimpModule;
+// ปรับการเรียกใช้ Jimp ให้รองรับทุกสภาพแวดล้อม
+const Jimp = JimpModule.Jimp || JimpModule.default || JimpModule;
+
 const app = express();
 app.use(express.json());
 
@@ -24,7 +26,7 @@ const CONFIG = {
     API_ENDPOINT: "https://api.mystrix2.me/truemoney"
 };
 
-class TitanChristmasBot {
+class EvergreenTitan {
     constructor() {
         this.client = null;
         this.cache = new Set();
@@ -39,10 +41,9 @@ class TitanChristmasBot {
         this.setupHandlers();
         this.setupCron();
         this.startWebServer();
-        console.log("🎅 TITAN CHRISTMAS: ระบบออนไลน์แล้วพร้อมหิมะตก!");
+        console.log("🎄 EVERGREEN TITAN ระบบออนไลน์สมบูรณ์แบบ!");
     }
 
-    // --- ระบบสแกนและดักซอง ---
     extractHash(text) {
         if (!text) return null;
         const match = text.match(/v=([a-zA-Z0-9]{10,25})/) || text.match(/[a-zA-Z0-9]{18}/);
@@ -76,28 +77,29 @@ class TitanChristmasBot {
                 owner = json.data?.owner_profile?.full_name || "คนใจดี";
                 this.stats.total += parseFloat(amount);
                 this.stats.count++;
-            } else { status = json.message || "ซองหมดแล้ว"; }
-        } catch (e) { status = "API ผิดพลาด"; }
+            } else { status = json.message || "ซองเต็ม/หมด"; }
+        } catch (e) { status = "API Error"; }
 
-        const item = { hash, status, amount, source, time: new Date().toLocaleTimeString(), owner };
-        this.voucherHistory.unshift(item);
-        if (this.voucherHistory.length > 50) this.voucherHistory.pop();
+        this.voucherHistory.unshift({ hash, status, amount, source, time: new Date().toLocaleTimeString(), owner });
+        if (this.voucherHistory.length > 30) this.voucherHistory.pop();
 
-        const report = `${emoji} **รายงานการรับซอง**\n━━━━━━━━━━━━━━\n📌 **ผลลัพธ์:** ${status}\n💰 **จำนวน:** ${amount} บาท\n👤 **จาก:** ${owner}\n⏱ **ความเร็ว:** ${duration}ms\n📂 **ที่มา:** ${source}\n🎫 **รหัส:** \`${hash}\``;
+        const report = `${emoji} **รายงานตักซอง**\n━━━━━━━━━━━━━━\n📌 **ผลลัพธ์:** ${status}\n💰 **จำนวน:** ${amount} บาท\n👤 **จาก:** ${owner}\n⏱ **ความเร็ว:** ${duration}ms\n📂 **ที่มา:** ${source}\n🎫 **รหัส:** \`${hash}\``;
         this.client.sendMessage(CONFIG.LOG_GROUP, { message: report, parseMode: "markdown" }).catch(() => {});
     }
 
-    // --- ระบบสแกน QR Code (Improved) ---
     async scanQR(message) {
         try {
             const buffer = await this.client.downloadMedia(message, {});
+            if (!buffer) return;
             const img = await Jimp.read(buffer);
-            // เพิ่มการขยายรูปและปรับความคมชัดเบื้องต้นเพื่อให้ jsqr อ่านง่ายขึ้น
-            img.contrast(0.2).normalize(); 
-            const qr = jsQR(img.bitmap.data, img.bitmap.width, img.bitmap.height);
+            
+            // ปรับปรุงภาพ: ขาวดำ + เพิ่ม Contrast เพื่อให้อ่าน QR ง่ายขึ้น 200%
+            img.greyscale().contrast(0.3).normalize();
+            
+            const qr = jsQR(new Uint8ClampedArray(img.bitmap.data), img.bitmap.width, img.bitmap.height);
             if (qr) {
                 const h = this.extractHash(qr.data);
-                if (h) this.claim(h, "สแกนคิวอาร์โค้ด");
+                if (h) this.claim(h, "สแกน QR Code");
             }
         } catch (e) { console.log("QR Scan Error: " + e.message); }
     }
@@ -107,7 +109,8 @@ class TitanChristmasBot {
             const hash = link.split('/').pop().replace('+', '').split('?')[0];
             if (this.groupHistory.find(g => g.hash === hash)) return;
             await this.client.invoke(new Api.channels.JoinChannel({ channel: hash }));
-            this.groupHistory.push({ hash, time: new Date().toLocaleString() });
+            this.groupHistory.unshift({ hash, time: new Date().toLocaleTimeString() });
+            if (this.groupHistory.length > 10) this.groupHistory.pop();
         } catch (e) {}
     }
 
@@ -127,103 +130,144 @@ class TitanChristmasBot {
 
     setupCron() {
         cron.schedule("0 7 * * *", () => {
-            const report = `🎄 **สรุปยอดของขวัญคริสต์มาส**\n━━━━━━━━━━━━━━\n✅ รับสำเร็จ: ${this.stats.count} ครั้ง\n💰 ยอดรวม: ${this.stats.total.toFixed(2)} บาท\n🌟 สุขสันต์วันคริสต์มาส!`;
+            const report = `🎄 **สรุปยอดของขวัญประจำวัน**\n━━━━━━━━━━━━━━\n✅ สำเร็จ: ${this.stats.count} ครั้ง\n💰 ยอดรวม: ${this.stats.total.toFixed(2)} บาท\n🌟 ขอให้มีความสุขในวันคริสต์มาส!`;
             this.client.sendMessage(CONFIG.LOG_GROUP, { message: report }).catch(() => {});
             this.stats = { total: 0, count: 0, startTime: new Date() };
         }, { timezone: "Asia/Bangkok" });
     }
 
-    // --- ระบบเว็บไซต์ Dashboard ---
     startWebServer() {
         app.get("/", (req, res) => {
             res.send(`
             <!DOCTYPE html>
             <html>
             <head>
-                <title>Titan Christmas Dashboard</title>
+                <meta charset="UTF-8">
+                <title>Titan Evergreen Dashboard</title>
                 <link href="https://fonts.googleapis.com/css2?family=Kanit:wght@300;500&display=swap" rel="stylesheet">
                 <style>
-                    body { background: #0a2e12; color: white; font-family: 'Kanit', sans-serif; margin: 0; overflow-x: hidden; }
-                    .snow { position: fixed; top: 0; left: 0; width: 100%; height: 100%; pointer-events: none; z-index: 1000; }
-                    .container { max-width: 1000px; margin: auto; padding: 20px; text-align: center; position: relative; z-index: 2; }
-                    .card { background: rgba(255,255,255,0.1); border-radius: 15px; padding: 20px; margin-bottom: 20px; border: 1px solid #c41e3a; }
-                    h1 { color: #d42426; text-shadow: 2px 2px 4px #000; }
-                    table { width: 100%; border-collapse: collapse; margin-top: 10px; }
-                    th, td { padding: 10px; border-bottom: 1px solid rgba(255,255,255,0.1); text-align: left; }
-                    th { color: #2ecc71; }
-                    .btn { background: #d42426; color: white; border: none; padding: 8px 15px; border-radius: 5px; cursor: pointer; }
-                    .btn-del { background: #555; }
+                    body { background: #071a0e; color: #ecf0f1; font-family: 'Kanit', sans-serif; margin: 0; }
+                    .snow { position: fixed; top: 0; left: 0; width: 100%; height: 100%; pointer-events: none; z-index: 10; }
+                    .content { position: relative; z-index: 20; max-width: 1100px; margin: auto; padding: 20px; }
+                    .header { text-align: center; padding: 40px 0; border-bottom: 3px dashed #c41e3a; margin-bottom: 30px; }
+                    .title { font-size: 2.5em; color: #f1c40f; text-shadow: 2px 2px #c41e3a; }
+                    .grid { display: grid; grid-template-columns: repeat(auto-fit, minmax(300px, 1fr)); gap: 20px; }
+                    .card { background: rgba(255,255,255,0.05); border: 1px solid #27ae60; border-radius: 20px; padding: 25px; backdrop-filter: blur(5px); }
+                    .stat-box { font-size: 2em; color: #2ecc71; font-weight: bold; }
+                    table { width: 100%; border-collapse: collapse; margin-top: 15px; font-size: 0.9em; }
+                    th { color: #f1c40f; text-align: left; padding: 12px; border-bottom: 2px solid #c41e3a; }
+                    td { padding: 12px; border-bottom: 1px solid rgba(255,255,255,0.1); }
+                    .input-group { display: flex; gap: 10px; margin-top: 15px; }
+                    input { background: #111; border: 1px solid #27ae60; color: white; padding: 10px; border-radius: 10px; flex: 1; }
+                    .btn { cursor: pointer; border: none; padding: 10px 20px; border-radius: 10px; font-weight: bold; transition: 0.3s; }
+                    .btn-add { background: #27ae60; color: white; }
+                    .btn-del { background: #c41e3a; color: white; font-size: 0.8em; padding: 5px 10px; }
+                    .btn:hover { transform: scale(1.05); opacity: 0.9; }
+                    .badge { background: #c41e3a; padding: 2px 8px; border-radius: 5px; font-size: 0.8em; }
                 </style>
             </head>
             <body>
-                <canvas class="snow" id="snowCanvas"></canvas>
-                <div class="container">
-                    <h1>🎄 Titan Christmas Dashboard ❄️</h1>
-                    <div style="display: flex; gap: 20px; justify-content: center;">
-                        <div class="card"><h3>💰 ยอดรวมวันนี้</h3><h2>${this.stats.total.toFixed(2)}</h2></div>
-                        <div class="card"><h3>🎁 รับไปแล้ว</h3><h2>${this.stats.count} ซอง</h2></div>
-                    </div>
-                    
-                    <div class="card">
-                        <h3>📱 จัดการเบอร์ Wallet</h3>
-                        <p>เบอร์ปัจจุบัน: <b>${CONFIG.WALLET_PHONES.join(", ")}</b></p>
-                        <input type="text" id="newPhone" placeholder="เบอร์โทรศัพท์" style="padding: 5px;">
-                        <button class="btn" onclick="addPhone()">เพิ่มเบอร์</button>
+                <canvas class="snow" id="snow"></canvas>
+                <div class="content">
+                    <div class="header">
+                        <div class="title">🎄 TITAN EVERGREEN DASHBOARD ❄️</div>
+                        <p>ระบบล่าซองของขวัญอัตโนมัติ (Christmas Special Edition)</p>
                     </div>
 
-                    <div class="card">
-                        <h3>📜 รายการซองล่าสุด</h3>
+                    <div class="grid">
+                        <div class="card">
+                            <h3>📊 สถิติวันนี้</h3>
+                            <div class="stat-box">฿ ${this.stats.total.toFixed(2)}</div>
+                            <p>ตักซองสำเร็จไปแล้ว <b>${this.stats.count}</b> ครั้ง</p>
+                        </div>
+                        <div class="card">
+                            <h3>📱 จัดการ Wallet</h3>
+                            <div class="input-group">
+                                <input type="text" id="phone" placeholder="ระบุเบอร์ใหม่...">
+                                <button class="btn btn-add" onclick="control('add')">เพิ่ม</button>
+                            </div>
+                            <div style="margin-top: 15px;">
+                                ${CONFIG.WALLET_PHONES.map((p, i) => `
+                                    <div style="display:flex; justify-content:space-between; margin-bottom:5px;">
+                                        <span>${i === 0 ? '⭐' : '•'} ${p}</span>
+                                        <button class="btn-del" onclick="control('del', '${p}')">ลบ</button>
+                                    </div>
+                                `).join('')}
+                            </div>
+                        </div>
+                    </div>
+
+                    <div class="card" style="margin-top:20px;">
+                        <h3>📜 ประวัติการรับล่าสุด (30 รายการ)</h3>
                         <table>
-                            <tr><th>เวลา</th><th>สถานะ</th><th>จำนวน</th><th>เจ้าของ</th></tr>
-                            ${this.voucherHistory.map(v => `<tr><td>${v.time}</td><td>${v.status}</td><td>${v.amount}</td><td>${v.owner}</td></tr>`).join('')}
+                            <thead>
+                                <tr><th>เวลา</th><th>สถานะ</th><th>จำนวน</th><th>แหล่งที่มา</th><th>เจ้าของซอง</th></tr>
+                            </thead>
+                            <tbody>
+                                ${this.voucherHistory.map(v => `
+                                    <tr>
+                                        <td>${v.time}</td>
+                                        <td><span class="${v.status.includes('สำเร็จ') ? '' : 'badge'}">${v.status}</span></td>
+                                        <td style="color:#2ecc71">฿${v.amount}</td>
+                                        <td>${v.source}</td>
+                                        <td>${v.owner}</td>
+                                    </tr>
+                                `).join('')}
+                            </tbody>
                         </table>
                     </div>
 
-                    <div class="card">
-                        <h3>📡 กลุ่มที่เข้าล่าสุด</h3>
-                        <div style="text-align: left;">${this.groupHistory.map(g => `• ${g.hash} (${g.time})`).join('<br>')}</div>
+                    <div class="card" style="margin-top:20px;">
+                        <h3>📡 กลุ่มที่กระโดดเข้าล่าสุด</h3>
+                        <div style="display: flex; flex-wrap: wrap; gap: 10px;">
+                            ${this.groupHistory.map(g => `<span class="card" style="padding: 10px; border-color: #f1c40f;">${g.hash} <br><small>${g.time}</small></span>`).join('')}
+                        </div>
                     </div>
                 </div>
 
                 <script>
-                    function addPhone() {
-                        const p = document.getElementById('newPhone').value;
-                        if(p) fetch('/add-phone?p='+p).then(() => location.reload());
+                    function control(action, phone) {
+                        const val = phone || document.getElementById('phone').value;
+                        if(!val && action === 'add') return;
+                        fetch(\`/manage?action=\${action}&phone=\${val}\`).then(() => location.reload());
                     }
-                    // Snow Effect
-                    const canvas = document.getElementById('snowCanvas');
+
+                    // Snow Animation
+                    const canvas = document.getElementById('snow');
                     const ctx = canvas.getContext('2d');
-                    let particles = [];
-                    function initSnow() {
+                    let flakes = [];
+                    function init() {
                         canvas.width = window.innerWidth; canvas.height = window.innerHeight;
-                        for(let i=0; i<100; i++) particles.push({x: Math.random()*canvas.width, y: Math.random()*canvas.height, r: Math.random()*4+1, d: Math.random()*1});
+                        for(let i=0; i<150; i++) flakes.push({x: Math.random()*canvas.width, y: Math.random()*canvas.height, r: Math.random()*3+1, d: Math.random()*1});
                     }
-                    function drawSnow() {
+                    function draw() {
                         ctx.clearRect(0,0,canvas.width, canvas.height);
                         ctx.fillStyle = "white"; ctx.beginPath();
-                        for(let p of particles) {
-                            ctx.moveTo(p.x, p.y); ctx.arc(p.x, p.y, p.r, 0, Math.PI*2, true);
-                            p.y += Math.cos(p.d) + 1 + p.r/2; p.x += Math.sin(p.d) * 2;
-                            if(p.y > canvas.height) { p.y = -10; p.x = Math.random()*canvas.width; }
-                        }
-                        ctx.fill(); requestAnimationFrame(drawSnow);
+                        flakes.forEach(f => {
+                            ctx.moveTo(f.x, f.y); ctx.arc(f.x, f.y, f.r, 0, Math.PI*2);
+                            f.y += Math.cos(f.d) + 1 + f.r/2; f.x += Math.sin(f.d) * 1;
+                            if(f.y > canvas.height) { f.y = -10; f.x = Math.random()*canvas.width; }
+                        });
+                        ctx.fill(); requestAnimationFrame(draw);
                     }
-                    initSnow(); drawSnow();
+                    init(); draw();
+                    window.onresize = init;
                 </script>
             </body>
             </html>
             `);
         });
 
-        app.get("/add-phone", (req, res) => {
-            const p = req.query.p;
-            if (p) CONFIG.WALLET_PHONES.unshift(p);
+        app.get("/manage", (req, res) => {
+            const { action, phone } = req.query;
+            if (action === "add" && phone) CONFIG.WALLET_PHONES.unshift(phone);
+            if (action === "del" && phone) CONFIG.WALLET_PHONES = CONFIG.WALLET_PHONES.filter(p => p !== phone);
             res.send("ok");
         });
 
-        app.listen(3000, () => console.log("🎄 เว็บไซต์เปิดที่ http://localhost:3000"));
+        app.listen(3000, () => console.log("🎄 เว็บแดชบอร์ดเปิดที่: http://localhost:3000"));
     }
 }
 
-const bot = new TitanChristmasBot();
+const bot = new EvergreenTitan();
 bot.start();
