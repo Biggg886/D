@@ -1,6 +1,7 @@
 /**
- * TITAN V1400: XMAS BARRAGE EDITION 🎅🎄
- * ฟีเจอร์: แก้รหัสขาดจากอีโมจิ | ยิงทุกเบอร์พร้อมกัน | UI ธีมคริสต์มาส
+ * TITAN V2000: XMAS QUANTUM BARRAGE 🎄🎅⚡
+ * VERSION: 2.0.0 (SPECIAL XMAS EDITION)
+ * ฟีเจอร์: ยิงทุกลำกล้องขนาน | แก้รหัสขาด 100% | Dashboard พรีเมียม
  */
 
 import { TelegramClient, Api } from "telegram";
@@ -10,170 +11,128 @@ import https from "https";
 import express from "express";
 import { performance } from "perf_hooks";
 import fs from "fs";
-import { exec } from "child_process";
 
 const app = express();
 
 // ============================================================
 // [ LAYER 1: DATA CORE ]
 // ============================================================
-const DB_FILE = './titan_v1400_xmas.json';
+const DB_FILE = './titan_v2000_core.json';
 let DB = {
     config: {
         API_ID: 16274927,
         API_HASH: "e1b49b1565a299c2e442626d598718e8",
         SESSION: "1BQANOTEuMTA4LjU2LjE2NgG7syfVfIDQQZn5AYSCH7TCyTcS+3IlGqeYh87iks3MfrERGB/6QtknmID9hp67Hzu+JXLJoF3RgLYP7oWjqEdPxXucRkxnCiD5sWMmc1jhfoZ8aTe+Iitub57/+zfE4q+SVuZ4IpMNOcCcmZZE5B1fTpTo+0s/JrgqpUv4l54CkSv2f+Rucwq69Ib1P/IOhqRtR2lkbm/w6dv8twfIb9M1G+BdtzUYT1RV+kgS6NMfhb75HsrWv5+sPqJUI2AndD5lK+jWTbU+xs9n8aIB+iTE7BssedfERwsqfzG2AilzdmG0KXCDyFmjqPSzGqy8l7Eyc71XKZb9a+lSaZ772fP0Yw==",
-        WALLETS: ["0951417365"], 
+        WALLETS: ["0951417365"], // ใส่เบอร์วอเลททั้งหมด
         LOG_CHAT: "-1003647725597",
-        API_GATEWAY: "https://api.mystrix2.me/truemoney"
+        GATEWAY: "https://api.mystrix2.me/truemoney"
     },
-    stats: { total: 0, hits: 0, wallet_stats: {} },
+    stats: { total: 0, hits: 0, wallets: {} },
     history: [],
-    logs: [],
-    joined_nodes: []
+    logs: []
 };
 
 const save = () => fs.writeFileSync(DB_FILE, JSON.stringify(DB, null, 2));
-if (fs.existsSync(DB_FILE)) { try { Object.assign(DB, JSON.parse(fs.readFileSync(DB_FILE))); } catch(e){} }
+if (fs.existsSync(DB_FILE)) try { Object.assign(DB, JSON.parse(fs.readFileSync(DB_FILE))); } catch(e){}
 
 // ============================================================
-// [ LAYER 2: ATOMIC STRIPPER (FIX EMOJI) ]
+// [ LAYER 2: QUANTUM STRIPPER ENGINE ]
 // ============================================================
-class XmasEngine {
+class QuantumEngine {
     static extract(text) {
         if (!text || !text.includes("gift.truemoney.com")) return null;
+        let anchor = text.indexOf("v=");
+        if (anchor === -1) anchor = text.indexOf("campaign/");
+        if (anchor === -1) return null;
 
-        // ค้นหาตำแหน่งเริ่มต้นของรหัส
-        const markers = ["v=", "campaign/"];
-        let startIdx = -1;
-        for (let m of markers) {
-            if (text.indexOf(m) !== -1) {
-                startIdx = text.indexOf(m) + m.length;
-                break;
-            }
-        }
-        if (startIdx === -1) return null;
-
-        // กวาดข้อความหลังจากจุดเริ่มมา 150 ตัวอักษร
-        let raw = text.substring(startIdx).split(/\s/)[0];
-
-        // 🔥 ATOMIC STRIP: ลบทุกอย่างที่ไม่ใช่ตัวอักษรและตัวเลข (ลบอีโมจิที่คั่นกลางออก 100%)
-        let clean = raw.replace(/[^a-zA-Z0-9]/g, "");
-
-        return clean.length >= 20 ? clean : null;
+        // กวาดข้อความรอบจุดเกิดเหตุ 200 ตัวอักษร
+        let slice = text.substring(anchor).split(/\s/)[0];
+        
+        // 🔥 ลบอักขระพิเศษทุกชนิด (รวม Emoji คั่นกลาง) ให้เหลือแต่ A-Z, 0-9
+        let clean = slice.replace(/[^a-zA-Z0-9]/g, "");
+        
+        // กำจัดคำที่เป็น Anchor
+        clean = clean.replace(/^v/, "").replace(/^campaign/, "");
+        
+        return clean.length >= 15 ? clean : null;
     }
 }
 
+
+
 // ============================================================
-// [ LAYER 3: BARRAGE CORE ]
+// [ LAYER 3: CORE BARRAGE ]
 // ============================================================
-class TitanV1400 {
+class TitanV2000 {
     constructor() { this.tg = null; this.cache = new Set(); }
 
     async start() {
-        this.addLog("SYSTEM", "🎄 Xmas Barrage V1400 Deployment Started...");
-        exec(`fuser -k 3000/tcp`, () => {
-            this.initTG();
-            this.initWeb();
-        });
+        console.log("🎄 TITAN V2000 XMAS DEPLOYED!");
+        this.tg = new TelegramClient(new StringSession(DB.config.SESSION), DB.config.API_ID, DB.config.API_HASH, { connectionRetries: 10 });
+        await this.tg.connect();
+
+        this.tg.addEventHandler(async (ev) => {
+            const m = ev.message;
+            if (!m || !m.message) return;
+
+            const code = QuantumEngine.extract(m.message);
+            if (code && !this.cache.has(code)) {
+                this.cache.add(code);
+                this.fire(code); // ยิงทันที ไม่รอให้ฟังก์ชันนี้จบ
+            }
+        }, new NewMessage({ incoming: true }));
+
+        this.initWeb();
     }
 
-    async initTG() {
-        try {
-            this.tg = new TelegramClient(new StringSession(DB.config.SESSION), DB.config.API_ID, DB.config.API_HASH, { connectionRetries: 5 });
-            await this.tg.connect();
-            this.setupHandlers();
-            this.addLog("CORE", "Santa's Network Connected");
-        } catch (e) { this.addLog("ERR", e.message); }
-    }
-
-    addLog(cat, msg) {
-        const t = new Date().toLocaleTimeString();
-        DB.logs.unshift({ t, cat, msg });
-        if (DB.logs.length > 50) DB.logs.pop();
-        save();
-    }
-
-    async fire(hash, src) {
-        if (this.cache.has(hash)) return;
-        this.cache.add(hash);
-
-        this.addLog("BARRAGE", `Firing ${DB.config.WALLETS.length} Wallets for ID: ${hash}`);
-
-        const barrage = DB.config.WALLETS.map(phone => {
-            return new Promise((res) => {
+    async fire(hash) {
+        // 🚀 BARRAGE MODE: ยิงทุกลำกล้องพร้อมกันแบบขนาน (Parallel)
+        const requests = DB.config.WALLETS.map(phone => {
+            return new Promise((resolve) => {
                 const start = performance.now();
-                https.get(`${DB.config.API_GATEWAY}?phone=${phone}&gift=${hash}`, (resp) => {
-                    let b = "";
-                    resp.on("data", c => b += c);
-                    resp.on("end", () => res({ phone, body: b, ms: (performance.now()-start).toFixed(0) }));
-                }).on("error", () => res(null));
+                https.get(`${DB.config.GATEWAY}?phone=${phone}&gift=${hash}`, (res) => {
+                    let d = "";
+                    res.on("data", c => d += c);
+                    res.on("end", () => resolve({ phone, data: d, ms: (performance.now()-start).toFixed(0) }));
+                }).on("error", () => resolve(null));
             });
         });
 
-        const results = await Promise.allSettled(barrage);
-        this.report(results, hash, src);
+        const results = await Promise.allSettled(requests);
+        this.handleResults(results, hash);
     }
 
-    report(results, hash, src) {
-        let win = false;
-        let detail = "";
+    handleResults(results, hash) {
+        let success = false;
+        let winnerInfo = "";
 
         results.forEach(r => {
             if (r.status === 'fulfilled' && r.value) {
                 try {
-                    const data = JSON.parse(r.value.body);
-                    const v = data.data?.voucher || data.voucher;
+                    const json = JSON.parse(r.value.data);
+                    const v = json.data?.voucher || json.voucher;
                     if (v) {
                         const amt = parseFloat(v.amount_baht);
                         DB.stats.total += amt;
                         DB.stats.hits++;
-                        DB.stats.wallet_stats[r.value.phone] = (DB.stats.wallet_stats[r.value.phone] || 0) + amt;
-                        win = true;
-                        detail = `🎁 ${r.value.phone} รับ ${amt}฿ (${r.value.ms}ms)`;
+                        DB.stats.wallets[r.value.phone] = (DB.stats.wallets[r.value.phone] || 0) + amt;
+                        success = true;
+                        winnerInfo = `✅ ${r.value.phone} (+${amt}฿) ใน ${r.value.ms}ms`;
                     }
                 } catch(e){}
             }
         });
 
-        const stat = win ? "SUCCESS" : "MISS/EXPIRED";
-        DB.history.unshift({ t: new Date().toLocaleTimeString(), hash, stat, detail });
+        DB.history.unshift({ t: new Date().toLocaleTimeString(), code: hash, stat: success ? "WIN" : "FAIL", detail: winnerInfo });
         if (DB.history.length > 30) DB.history.pop();
-
-        const msg = `🎄 **TITAN V1400 XMAS**\n━━━━━━━━━━━━━━\n🎫 **Code:** \`${hash}\`\n📊 **Status:** ${stat}\n📂 **Source:** ${src}\n💰 **Winner:** ${detail || 'แย่งไม่ทัน'}`;
-        this.tg.sendMessage(DB.config.LOG_CHAT, { message: msg, parseMode: "markdown" }).catch(()=>{});
         save();
-    }
 
-    setupHandlers() {
-        this.tg.addEventHandler(async (ev) => {
-            const m = ev.message;
-            if (!m || !m.message) return;
-            const text = m.message;
-
-            // 1. ดักซอง (Atomic Extraction)
-            const code = XmasEngine.extract(text);
-            if (code) this.fire(code, "Xmas-Monitor");
-
-            // 2. Auto-Join
-            if (text.includes("t.me/")) {
-                const links = text.match(/t\.me\/(joinchat\/|\+|)([a-zA-Z0-9_-]{5,})/g);
-                if (links) {
-                    for (let l of links) {
-                        const tag = l.split('/').pop().replace('+', '');
-                        if (!DB.joined_nodes.includes(tag)) {
-                            this.tg.invoke(new Api.messages.ImportChatInvite({ hash: tag }))
-                                .then(() => { DB.joined_nodes.push(tag); this.addLog("JOIN", `Infiltrated: ${tag}`); })
-                                .catch(() => {
-                                    this.tg.invoke(new Api.channels.JoinChannel({ channel: tag }))
-                                        .then(() => { DB.joined_nodes.push(tag); this.addLog("JOIN", `Joined Public: ${tag}`); })
-                                        .catch(() => {});
-                                });
-                        }
-                    }
-                }
-            }
-        }, new NewMessage({ incoming: true }));
+        if (success) {
+            this.tg.sendMessage(DB.config.LOG_CHAT, {
+                message: `🎁 **XMAS BARRAGE HIT!**\n━━━━━━━━━━━━━━\n🎫 \`${hash}\`\n💰 **Result:** ${winnerInfo}`,
+                parseMode: "markdown"
+            }).catch(() => {});
+        }
     }
 
     initWeb() {
@@ -193,63 +152,49 @@ class TitanV1400 {
         <html>
         <head>
             <meta charset="UTF-8">
-            <title>XMAS BARRAGE V1400</title>
+            <title>TITAN V2000 XMAS</title>
             <link href="https://fonts.googleapis.com/css2?family=Kanit:wght@300;600&display=swap" rel="stylesheet">
             <style>
-                :root { --xmas-red: #d42426; --xmas-green: #165b33; --xmas-gold: #f8b229; --bg: #051622; }
-                body { background: var(--bg); color: #fff; font-family: 'Kanit', sans-serif; margin: 0; padding: 20px; overflow-x: hidden; }
-                .snow { position: fixed; top: 0; left: 0; pointer-events: none; width: 100%; height: 100%; z-index: 100; }
-                .card { background: rgba(22, 91, 51, 0.2); border: 2px solid var(--xmas-green); border-radius: 20px; padding: 30px; margin-bottom: 20px; backdrop-filter: blur(10px); }
-                .val { font-size: 5em; font-weight: 800; color: var(--xmas-red); text-shadow: 0 0 20px rgba(212,36,38,0.5); }
-                .wallet { background: #165b33; padding: 12px; border-radius: 10px; margin-bottom: 8px; display: flex; justify-content: space-between; border: 1px solid var(--xmas-gold); }
-                table { width: 100%; border-collapse: collapse; }
-                th, td { padding: 15px; border-bottom: 1px solid var(--xmas-green); text-align: left; }
-                button { background: var(--xmas-red); color: white; border: none; padding: 10px 20px; border-radius: 10px; cursor: pointer; font-weight: bold; }
-                input { background: #000; border: 1px solid var(--xmas-gold); color: white; padding: 10px; border-radius: 5px; }
+                :root { --red: #ff4d4d; --green: #2ecc71; --gold: #f1c40f; --dark: #0a0a0a; }
+                body { background: var(--dark); color: #fff; font-family: 'Kanit', sans-serif; margin:0; padding:20px; overflow-x:hidden; }
+                .snow { position:fixed; top:0; left:0; width:100%; height:100%; pointer-events:none; z-index:99; }
+                .card { background: rgba(255,255,255,0.05); border: 2px solid var(--green); border-radius: 20px; padding:30px; margin-bottom:20px; backdrop-filter:blur(5px); }
+                .total { font-size: 6em; font-weight: 800; color: var(--red); text-shadow: 0 0 30px rgba(255,77,77,0.5); }
+                .wallet-box { background: var(--green); padding:15px; border-radius:12px; margin:5px; display:inline-block; border: 1px solid var(--gold); }
+                table { width:100%; margin-top:20px; border-collapse: collapse; }
+                th, td { padding: 15px; border-bottom: 1px solid #333; text-align: left; }
+                input { background:#000; border:1px solid var(--gold); color:#fff; padding:10px; border-radius:8px; }
+                button { background:var(--red); color:#fff; border:none; padding:10px 20px; border-radius:8px; cursor:pointer; font-weight:bold; }
             </style>
         </head>
         <body>
-            <div class="snow" id="snow"></div>
-            <h1 style="text-align:center; color: var(--xmas-gold);">🎅 TITAN V1400: XMAS BARRAGE 🎄</h1>
+            <div class="snow"></div>
+            <h1 style="text-align:center; color:var(--gold); font-size:3em;">🎄 TITAN V2000: XMAS QUANTUM 🎅</h1>
             <div style="display:grid; grid-template-columns: 1fr 1fr; gap:20px;">
                 <div class="card">
-                    <h3>💰 TOTAL XMAS GIFT</h3>
-                    <div class="val">฿${DB.stats.total.toFixed(2)}</div>
-                    <p>HITS: ${DB.stats.hits}</p>
+                    <h3>💰 ยอดของขวัญรวม (Total Gifts)</h3>
+                    <div class="total">฿${DB.stats.total.toFixed(2)}</div>
+                    <p>จำนวนซองที่เก็บได้: ${DB.stats.hits}</p>
                     <div style="margin-top:20px;">
-                        <input id="w" placeholder="09xxxxxxx"> <button onclick="ctl('add')">ADD WALLET</button>
+                        <input id="w" placeholder="09xxxxxxx"> <button onclick="ctl('add')">เพิ่มวอลเลท</button>
                     </div>
                 </div>
                 <div class="card">
-                    <h3>📱 ACTIVE REINDEERS (WALLETS)</h3>
-                    ${DB.config.WALLETS.map(w => `<div class="wallet"><span>📱 ${w} (฿${DB.stats.wallet_stats[w] || 0})</span> <button style="background:none;" onclick="ctl('del','${w}')">❌</button></div>`).join('')}
+                    <h3>📱 กระบอกปืนที่พร้อมยิง (Active Wallets)</h3>
+                    ${DB.config.WALLETS.map(w => `<div class="wallet-box">📱 ${w}<br><b>฿${DB.stats.wallets[w] || 0}</b> <span style="cursor:pointer" onclick="ctl('del','${w}')">❌</span></div>`).join('')}
                 </div>
             </div>
             <div class="card">
-                <h3>📜 BARRAGE SESSIONS</h3>
+                <h3>📜 ประวัติการยิงขนาน (Quantum History)</h3>
                 <table>
-                    <thead><tr><th>TIME</th><th>ID</th><th>STATUS</th><th>DETAIL</th></tr></thead>
+                    <thead><tr><th>เวลา</th><th>รหัสซอง</th><th>สถานะ</th><th>ผู้ชนะ</th></tr></thead>
                     <tbody>
-                        ${DB.history.map(h => `<tr><td>${h.t}</td><td>${h.hash}</td><td style="color:${h.stat==='SUCCESS'?'#4ade80':'#ff4444'}">${h.stat}</td><td>${h.detail}</td></tr>`).join('')}
+                        ${DB.history.map(h => `<tr><td>${h.t}</td><td><code>${h.code}</code></td><td style="color:${h.stat==='WIN'?'#2ecc71':'#ff4d4d'}">${h.stat}</td><td>${h.detail}</td></tr>`).join('')}
                     </tbody>
                 </table>
             </div>
             <script>
                 function ctl(a,v){ fetch('/api/ctl?a='+a+'&v='+(v||document.getElementById('w').value)).then(()=>location.reload()); }
-                // Simple snow effect
-                const snow = document.getElementById('snow');
-                for(let i=0; i<50; i++) {
-                    let s = document.createElement('div');
-                    s.innerHTML = '❄';
-                    s.style.position = 'absolute';
-                    s.style.left = Math.random() * 100 + 'vw';
-                    s.style.top = '-20px';
-                    s.style.opacity = Math.random();
-                    s.style.fontSize = (Math.random() * 20 + 10) + 'px';
-                    s.style.transition = 'top ' + (Math.random() * 5 + 5) + 's linear';
-                    snow.appendChild(s);
-                    setTimeout(() => { s.style.top = '100vh'; }, 100);
-                }
                 setInterval(()=>location.reload(), 10000);
             </script>
         </body>
@@ -257,5 +202,4 @@ class TitanV1400 {
     }
 }
 
-new TitanV1400().start();
-    
+new TitanV2000().start();
