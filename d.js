@@ -1,7 +1,7 @@
 /**
- * 🌌 TITAN V100,000: THE SINGULARITY
- * 👑 The Final God Emperor Edition
- * 🚀 Fix: Jimp Import Error (Hybrid Loader) | Auto-Join | QR | Full Dashboard
+ * 👑 TITAN V1,000,000: THE OMNIPOTENCE
+ * 🌌 FINAL VERSION - FULL SYSTEM & AUTO-BROADCAST
+ * 🚀 Fix: Scan All Formats | Fast Buffer | Thai Time | Auto-Join
  */
 
 import { TelegramClient, Api } from "telegram";
@@ -13,38 +13,34 @@ import { performance } from "perf_hooks";
 import fs from "fs";
 import { createRequire } from "module";
 import { execSync } from "child_process";
-import os from "os";
 
-// [ 1. HYBRID LOADER - แก้ปัญหา Library Error ถาวร ]
 const require = createRequire(import.meta.url);
 
-// Auto-Install Dependencies
+// [ 1. AUTO-SYSTEM INITIALIZER ]
 const deps = ['jimp', 'jsqr', 'express', 'telegram', 'input'];
 try {
     const missing = deps.filter(d => !fs.existsSync(`./node_modules/${d}`));
     if (missing.length > 0) {
-        console.log(`📦 Installing Singularity Core: ${missing.join(', ')}...`);
+        console.log(`📦 Preparing God Mode Core: ${missing.join(', ')}...`);
         execSync(`npm install ${missing.join(' ')}`, { stdio: 'inherit' });
     }
 } catch (e) {}
 
-// Load Libraries safely using Require (No more SyntaxError)
 const Jimp = require("jimp");
 const jsQR = require("jsqr");
-
 const app = express();
-const DB_PATH = './titan_v100000_singularity.json';
+const DB_PATH = './titan_v1000000_god.json';
 
 // ============================================================
-// [ 2. CONFIGURATION CORE ]
+// [ 2. CONFIGURATION ]
 // ============================================================
 let DB = {
     config: {
         API_ID: 16274927,
         API_HASH: "e1b49b1565a299c2e442626d598718e8",
         SESSION: "1BQANOTEuMTA4LjU2LjE2NgG7syfVfIDQQZn5AYSCH7TCyTcS+3IlGqeYh87iks3MfrERGB/6QtknmID9hp67Hzu+JXLJoF3RgLYP7oWjqEdPxXucRkxnCiD5sWMmc1jhfoZ8aTe+Iitub57/+zfE4q+SVuZ4IpMNOcCcmZZE5B1fTpTo+0s/JrgqpUv4l54CkSv2f+Rucwq69Ib1P/IOhqRtR2lkbm/w6dv8twfIb9M1G+BdtzUYT1RV+kgS6NMfhb75HsrWv5+sPqJUI2AndD5lK+jWTbU+xs9n8aIB+iTE7BssedfERwsqfzG2AilzdmG0KXCDyFmjqPSzGqy8l7Eyc71XKZb9a+lSaZ772fP0Yw==",
-        WALLETS: ["0951417365"], // ⚠️ ใส่เบอร์วอลเลทของคุณที่นี่
-        LOG_CHAT: "-1003647725597", // ⚠️ ใส่ ID กลุ่ม Log
+        WALLETS: ["0951417365"], 
+        LOG_CHAT: "-1003647725597",
         GATEWAY: "https://api.mystrix2.me/truemoney"
     },
     stats: { total: 0, hits: 0, wallet_stats: {} },
@@ -57,142 +53,138 @@ const save = () => fs.writeFileSync(DB_PATH, JSON.stringify(DB, null, 2));
 const getTime = () => new Date().toLocaleString("th-TH", { timeZone: "Asia/Bangkok", hour12: false }) + `.${new Date().getMilliseconds().toString().padStart(3, '0')}`;
 
 // ============================================================
-// [ 3. SINGULARITY ENGINE ]
+// [ 3. ADVANCED EXTRACTION ENGINE ]
 // ============================================================
-class SingularityEngine {
-    static scrub(text) {
-        if (!text || !text.includes("gift.truemoney.com")) return null;
-        try {
-            const part = text.split(/v=|campaign\//)[1];
-            return part ? part.split(/[^a-zA-Z0-9]/)[0] : null;
-        } catch(e) { return null; }
+class GodScanner {
+    static extract(text) {
+        if (!text) return null;
+        // ปรับ Regex ให้ดึงรหัสซองได้ทุกรูปแบบ ทั้งที่มี / และไม่มี
+        const regex = /gift\.truemoney\.com\/(?:v=|campaign\/)?([a-zA-Z0-9]{5,})/i;
+        const match = text.match(regex);
+        return match ? match[1] : null;
     }
 
     static async scanQR(buffer) {
         try {
             const image = await Jimp.read(buffer);
             const qr = jsQR(image.bitmap.data, image.bitmap.width, image.bitmap.height);
-            return qr ? this.scrub(qr.data) : null;
+            return qr ? this.extract(qr.data) : null;
         } catch (e) { return null; }
     }
 }
 
-class TitanV100000 {
-    constructor() { this.tg = null; this.cache = new Set(); this.port = 3000; }
+class TitanV1000000 {
+    constructor() { 
+        this.tg = null; 
+        this.cache = new Set(); 
+        this.port = 3000;
+        this.startTime = getTime();
+    }
 
     async deploy() {
         console.clear();
-        console.log(`\n🌌 TITAN V100,000: SINGULARITY ONLINE | ${getTime()}`);
+        console.log(`\n👑 TITAN V1,000,000: OMNIPOTENCE READY | ${this.startTime}`);
         
         this.tg = new TelegramClient(new StringSession(DB.config.SESSION), DB.config.API_ID, DB.config.API_HASH, { connectionRetries: 100 });
         await this.tg.connect();
         
-        console.log(`✅ NEURAL NETWORK CONNECTED`);
-        this.startListeners();
-        this.initDashboard();
+        // ส่งข้อความแจ้งเตือนเมื่อบอทออนไลน์ (Auto-Broadcast)
+        await this.broadcastStatus();
+        
+        this.startListening();
+        this.initWebUI();
     }
 
-    startListeners() {
+    async broadcastStatus() {
+        const msg = `🚀 **TITAN V1,000,000 [ONLINE]**\n━━━━━━━━━━━━━━━━━━━━\n⏰ **เวลาเริ่มงาน:** \`${this.startTime}\`\n✅ **ระบบสแกน:** พร้อมใช้งาน (Text + QR)\n📱 **จำนวนวอลเลท:** \`${DB.config.WALLETS.length}\` หน่วย\n📡 **สถานะ:** กำลังดักฟังทุกกลุ่ม...`;
+        await this.tg.sendMessage(DB.config.LOG_CHAT, { message: msg, parseMode: "markdown" }).catch(e => console.log("Broadcast Error:", e.message));
+        this.log("SYSTEM", "Broadcasted Online Status to Group");
+    }
+
+    startListening() {
         this.tg.addEventHandler(async (ev) => {
             const m = ev.message;
             if (!m) return;
             const text = m.message || "";
 
-            // [AUTO-JOIN MODULE]
-            if (text.includes("t.me/") || text.includes("telegram.me/")) {
-                this.handleInfiltration(text);
-            }
+            // 1. AUTO-JOIN (Infiltrator)
+            if (text.includes("t.me/")) this.infiltrate(text);
 
-            // [SCANNING MODULE]
-            let code = SingularityEngine.scrub(text);
+            // 2. TEXT SCAN (Omni-Extractor)
+            let code = GodScanner.extract(text);
             
-            // QR Check
+            // 3. QR SCAN (Turbo-Buffer)
             if (!code && m.media instanceof Api.MessageMediaPhoto) {
                 const buffer = await this.tg.downloadMedia(m.media);
-                code = await SingularityEngine.scanQR(buffer);
+                code = await GodScanner.scanQR(buffer);
             }
 
             if (code && !this.cache.has(code)) {
                 this.cache.add(code);
-                this.execute(code);
+                this.strike(code);
             }
         }, new NewMessage({ incoming: true }));
     }
 
-    async handleInfiltration(text) {
-        // Regex ครอบคลุมทั้ง Private Join และ Public Channel
-        const patterns = [
-            /(?:t|telegram)\.me\/\+([a-zA-Z0-9_-]+)/, // Private
-            /(?:t|telegram)\.me\/joinchat\/([a-zA-Z0-9_-]+)/, // Old Private
-            /(?:t|telegram)\.me\/([a-zA-Z0-9_]{5,})/ // Public
-        ];
-
-        for (let p of patterns) {
-            const match = text.match(p);
-            if (match && match[1]) {
-                const target = match[1];
-                if (target === 'gift') continue; // ข้ามลิงก์ซอง
-                
+    async infiltrate(text) {
+        const links = text.match(/(?:t|telegram)\.me\/(?:\+|joinchat\/)?([a-zA-Z0-9_-]{5,})/g);
+        if (links) {
+            for (let l of links) {
+                const hash = l.split('/').pop().replace('+', '');
+                if (hash === 'gift') continue;
                 try {
-                    // Try Join
-                    await this.tg.invoke(new Api.messages.ImportChatInvite({ hash: target }));
-                    this.log("JOIN", `Infiltrated Private: ${target}`);
+                    await this.tg.invoke(new Api.messages.ImportChatInvite({ hash }));
+                    this.log("JOIN", `Infiltrated: ${hash}`);
                 } catch (e) {
-                    try {
-                        await this.tg.invoke(new Api.channels.JoinChannel({ channel: target }));
-                        this.log("JOIN", `Joined Public: ${target}`);
-                    } catch (ex) {}
+                    try { await this.tg.invoke(new Api.channels.JoinChannel({ channel: hash })); } catch(ex) {}
                 }
             }
         }
     }
 
-    async execute(hash) {
+    async strike(hash) {
         const ts = getTime();
-        this.log("FIRE", `SINGULARITY STRIKE -> ${hash}`);
+        this.log("STRIKE", `LOCKED TARGET: ${hash}`);
 
-        const volley = DB.config.WALLETS.map(phone => {
+        const barrage = DB.config.WALLETS.map(phone => {
             return new Promise((res) => {
                 const t0 = performance.now();
-                https.get(`${DB.config.GATEWAY}?phone=${phone}&gift=${hash}`, (resp) => {
-                    let d = ""; resp.on("data", c => d += c);
-                    resp.on("end", () => res({ phone, raw: d, ms: (performance.now()-t0).toFixed(0) }));
+                https.get(`${DB.config.GATEWAY}?phone=${phone}&gift=${hash}`, (r) => {
+                    let b = ""; r.on("data", c => b += c);
+                    r.on("end", () => res({ phone, body: b, ms: (performance.now()-t0).toFixed(0) }));
                 }).on("error", () => res(null));
             });
         });
 
-        const results = await Promise.allSettled(volley);
-        this.process(results, hash, ts);
+        const results = await Promise.allSettled(barrage);
+        this.analyze(results, hash, ts);
     }
 
-    process(results, hash, ts) {
-        let win = false;
-        let logs = [];
-
+    analyze(results, hash, ts) {
+        let win = false; let report = [];
         results.forEach(r => {
             if (r.status === 'fulfilled' && r.value) {
                 try {
-                    const json = JSON.parse(r.value.raw);
-                    const v = json.data?.voucher || json.voucher;
+                    const data = JSON.parse(r.value.body);
+                    const v = data.data?.voucher || data.voucher;
                     if (v) {
                         const amt = parseFloat(v.amount_baht);
                         DB.stats.total += amt;
                         DB.stats.hits++;
                         DB.stats.wallet_stats[r.value.phone] = (DB.stats.wallet_stats[r.value.phone] || 0) + amt;
                         win = true;
-                        logs.push(`🏆 ${r.value.phone} [+${amt}฿] (${r.value.ms}ms)`);
+                        report.push(`📱 ${r.value.phone} +${amt}฿ (${r.value.ms}ms)`);
                     }
                 } catch(e){}
             }
         });
 
-        const status = win ? "SUCCESS" : "MISS";
-        DB.history.unshift({ ts, hash, status, detail: logs.join(', ') || 'Full/Expired' });
+        DB.history.unshift({ ts, hash, status: win ? "SUCCESS" : "MISS", detail: report.join(', ') });
         if (DB.history.length > 100) DB.history.pop();
         save();
 
         if (win) {
-            const msg = `🌌 **TITAN V100,000 HIT!**\n━━━━━━━━━━━━━━\n⏰ \`${ts}\`\n🎫 \`${hash}\`\n💰 **LOOT:**\n${logs.join('\n')}`;
+            const msg = `👑 **TITAN OMNIPOTENCE WIN!**\n━━━━━━━━━━━━━━\n⏰ \`${ts}\`\n🎫 \`${hash}\`\n💰 **LOOT:**\n${report.join('\n')}`;
             this.tg.sendMessage(DB.config.LOG_CHAT, { message: msg, parseMode: "markdown" }).catch(()=>{});
         }
     }
@@ -204,86 +196,66 @@ class TitanV100000 {
         if (DB.logs.length > 50) DB.logs.pop();
     }
 
-    initDashboard() {
-        app.get("/", (req, res) => res.send(this.renderUI()));
+    initWebUI() {
+        app.get("/", (req, res) => res.send(this.ui()));
         app.get("/api/ctl", (req, res) => {
             const {a,v} = req.query;
             if(a==='add') DB.config.WALLETS.push(v);
             if(a==='del') DB.config.WALLETS = DB.config.WALLETS.filter(x=>x!==v);
             save(); res.send('ok');
         });
-
-        const spin = (p) => {
-            app.listen(p, () => {
-                this.port = p;
-                console.log(`🌐 SINGULARITY DASHBOARD: http://localhost:${p}`);
-            }).on('error', (e) => { if(e.code==='EADDRINUSE') spin(p+1); });
-        };
-        spin(3000);
+        const server = app.listen(this.port, () => console.log(`🌐 OMNI-DASHBOARD: http://localhost:${this.port}`))
+            .on('error', (e) => { if(e.code==='EADDRINUSE') { this.port++; server.listen(this.port); } });
     }
 
-    renderUI() {
+    ui() {
         return `
         <!DOCTYPE html>
         <html>
         <head>
-            <title>TITAN V100,000</title>
+            <title>TITAN V1M OMNI</title>
             <meta charset="UTF-8">
             <style>
-                @import url('https://fonts.googleapis.com/css2?family=Share+Tech+Mono&display=swap');
-                body { background: #000; color: #0f0; font-family: 'Share Tech Mono', monospace; margin: 0; padding: 20px; overflow-x: hidden; }
-                .container { max-width: 1400px; margin: 0 auto; border: 2px solid #0f0; padding: 20px; box-shadow: 0 0 20px #0f0; background: rgba(0,20,0,0.9); }
-                h1 { text-align: center; text-shadow: 0 0 10px #0f0; font-size: 3em; margin-bottom: 5px; }
-                .grid { display: grid; grid-template-columns: 1fr 1fr; gap: 20px; margin-top: 30px; }
-                .panel { border: 1px solid #005500; padding: 15px; background: #001100; position: relative; }
-                .panel::before { content: "SYSTEM_MODULE"; position: absolute; top: -10px; left: 10px; background: #000; color: #0f0; padding: 0 5px; font-size: 0.8em; }
-                .big-num { font-size: 4em; color: #fff; text-shadow: 0 0 15px #fff; }
-                table { width: 100%; border-collapse: collapse; margin-top: 10px; font-size: 0.9em; }
-                td, th { border-bottom: 1px solid #004400; padding: 8px; text-align: left; }
-                th { color: #00ff00; }
-                .win { color: #fff; background: #004400; }
-                .fail { color: #444; }
-                input, button { background: #000; border: 1px solid #0f0; color: #0f0; padding: 10px; font-family: inherit; }
-                button:hover { background: #0f0; color: #000; cursor: pointer; }
-                
-                /* Matrix Effect Background */
-                .matrix-bg { position: fixed; top: 0; left: 0; width: 100%; height: 100%; z-index: -1; opacity: 0.2; pointer-events: none; }
+                body { background: #000; color: #00f3ff; font-family: 'Courier New', monospace; padding: 30px; }
+                .box { border: 2px solid #00f3ff; padding: 20px; box-shadow: 0 0 20px #00f3ff; background: rgba(0,0,30,0.8); }
+                h1 { text-align: center; color: #fff; text-shadow: 0 0 15px #00f3ff; }
+                .stat { font-size: 5em; font-weight: bold; text-align: center; color: #fff; margin: 20px 0; }
+                table { width: 100%; margin-top: 20px; border-collapse: collapse; }
+                td, th { border: 1px solid #005577; padding: 10px; text-align: left; }
+                .win { color: #00ff00; } .miss { color: #555; }
+                input, button { background: #000; border: 1px solid #00f3ff; color: #00f3ff; padding: 10px; margin: 5px; }
+                button:hover { background: #00f3ff; color: #000; cursor: pointer; }
             </style>
         </head>
         <body>
-            <div class="container">
-                <h1>TITAN V100,000 <span style="font-size:0.4em">SINGULARITY</span></h1>
-                <div style="text-align:center; color:#fff;">SYSTEM TIME: ${getTime()}</div>
-
-                <div class="grid">
-                    <div class="panel">
-                        <div class="big-num">฿${DB.stats.total.toFixed(2)}</div>
-                        <div>TOTAL HITS: ${DB.stats.hits}</div>
-                        <div style="margin-top:20px;">
-                            <input id="w" placeholder="Wallet ID"> <button onclick="ctl('add')">INJECT</button>
-                        </div>
+            <div class="box">
+                <h1>💎 TITAN V1,000,000 : OMNIPOTENCE</h1>
+                <div style="text-align:center">SERVER TIME: ${getTime()} | UPTIME: ${(process.uptime()/60).toFixed(2)}m</div>
+                <div class="stat">฿${DB.stats.total.toFixed(2)}</div>
+                
+                <div style="display:flex; justify-content:space-around">
+                    <div>
+                        <h3>[ INJECT WALLET ]</h3>
+                        <input id="w" placeholder="09xxxxxxx"> <button onclick="ctl('add')">ADD NODE</button>
                     </div>
-                    <div class="panel">
-                         <div style="height:150px; overflow-y:auto; font-size:0.8em;">
-                            ${DB.logs.join('<br>')}
-                         </div>
+                    <div style="max-height: 200px; overflow-y: auto;">
+                        <h3>[ ACTIVE NODES ]</h3>
+                        ${DB.config.WALLETS.map(w => `<div>📱 ${w} <button onclick="ctl('del','${w}')">REMOVE</button></div>`).join('')}
                     </div>
                 </div>
 
-                <div class="panel" style="margin-top:20px;">
-                    <h3>ACTIVE NODES (WALLETS)</h3>
-                    ${DB.config.WALLETS.map(w => `<span style="border:1px solid #0f0; padding:5px; margin:5px; display:inline-block;">📱 ${w} : ฿${DB.stats.wallet_stats[w]||0} <b style="cursor:pointer; color:red" onclick="ctl('del','${w}')">[X]</b></span>`).join('')}
+                <h3>[ NEURAL LOGS ]</h3>
+                <div style="height: 150px; overflow-y: auto; background: #001122; padding: 10px; border: 1px solid #005577;">
+                    ${DB.logs.join('<br>')}
                 </div>
 
-                <div class="panel" style="margin-top:20px;">
-                    <h3>EVENT HORIZON (HISTORY)</h3>
-                    <table>
-                        <thead><tr><th>TIME</th><th>HASH</th><th>STATUS</th><th>PAYLOAD</th></tr></thead>
-                        <tbody>
-                            ${DB.history.map(h => `<tr><td>${h.ts}</td><td>${h.hash}</td><td class="${h.status==='SUCCESS'?'win':'fail'}">${h.status}</td><td>${h.detail}</td></tr>`).join('')}
-                        </tbody>
-                    </table>
-                </div>
+                <h3>[ BARRAGE HISTORY ]</h3>
+                <table>
+                    <thead><tr><th>TIME</th><th>HASH</th><th>STATUS</th><th>PAYLOAD</th></tr></thead>
+                    <tbody>
+                        ${DB.history.map(h => `<tr><td>${h.ts}</td><td>${h.hash}</td><td class="${h.status==='SUCCESS'?'win':'miss'}">${h.status}</td><td>${h.detail}</td></tr>`).join('')}
+                    </tbody>
+                </table>
             </div>
             <script>
                 function ctl(a,v){ fetch('/api/ctl?a='+a+'&v='+(v||document.getElementById('w').value)).then(()=>location.reload()); }
@@ -294,4 +266,4 @@ class TitanV100000 {
     }
 }
 
-new TitanV100000().deploy();
+new TitanV1000000().deploy();
